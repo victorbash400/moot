@@ -5,16 +5,11 @@ import { QuickActions } from "./components/QuickActions";
 import { VoiceControl } from "./components/VoiceControl";
 import { Sidebar } from "./components/Sidebar";
 import { SessionManager } from "./components/SessionManager";
-import ChatBubble from "./components/ChatBubble";
+import { ChatSection, Message } from "./components/ChatSection";
 import ChatInput from "./components/ChatInput";
+import { useWebSpeech } from "./hooks/useWebSpeech";
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  attachments?: any[];
-  citations?: string[];
-}
+
 
 export default function Home() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
@@ -28,22 +23,28 @@ export default function Home() {
       content: "Present your opening argument on whether the contract's arbitration clause is unconscionable under state law."
     }
   ]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const handleNewSession = () => {
+    // Reset to initial state
+    setMessages([{
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: "Starting new session. How can I help you with your case today?"
+    }]);
+    setSessionId(null);
+    setSessionState("idle");
   };
 
-  useEffect(() => {
-    // Only scroll if we added a new message or it's the very start
-    // For streaming updates (content changes), we usually don't want to force scroll constantly 
-    // unless we are already at the bottom, but smooth scroll on every chunk causes jitter.
-    // Changing to only scroll on new message addition or first load.
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.role === 'user' || messages.length === 1) {
-      scrollToBottom();
-    }
-  }, [messages.length]); // Only trigger on count change, not content change
+  const handleSelectSession = (id: string) => {
+    // In a real app, fetch session messages here
+    console.log("Loading session:", id);
+    setSessionId(id);
+    setMessages([{
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `Loaded session history for session ${id}. (Mock data)`
+    }]);
+  };
 
   const handleSendMessage = async (content: string, pdfContextIds?: string[], attachments?: any[]) => {
     // Add user message
@@ -133,6 +134,31 @@ export default function Home() {
     }
   };
 
+  const handleFinalSpeech = (transcript: string) => {
+    if (transcript.trim()) {
+      handleSendMessage(transcript);
+    }
+  };
+
+  const { isListening, startListening, stopListening, interimTranscript } = useWebSpeech({
+    onFinalTranscript: handleFinalSpeech,
+    continuous: true
+  });
+
+  // Manage voice state based on session and mode
+  useEffect(() => {
+    if (inputMode === "voice" && sessionState === "active") {
+      if (!isListening) {
+        startListening();
+      }
+    } else {
+      if (isListening) {
+        stopListening();
+      }
+    }
+  }, [inputMode, sessionState, startListening, stopListening, isListening]);
+
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-white">
       <Sidebar isExpanded={isSidebarExpanded} onToggle={setIsSidebarExpanded} />
@@ -144,27 +170,17 @@ export default function Home() {
         {/* Top Bar with Session Manager */}
         <div className="fixed top-0 right-0 left-0 z-30 flex items-center justify-between px-6 py-4"
           style={{ left: isSidebarExpanded ? '288px' : '80px' }}>
-          <SessionManager />
+          <SessionManager
+            onNewSession={handleNewSession}
+            onSelectSession={handleSelectSession}
+          />
         </div>
 
         <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center p-8 pt-32 relative">
           <div className="relative mx-auto flex w-full flex-col items-center justify-center gap-6 text-center h-[calc(100vh-280px)]">
 
             {/* Glassy Chat Container - Wraps ChatBubbles */}
-            <div className="relative border border-[#d4c5b0]/40 rounded-2xl bg-[#fdfbf7]/50 backdrop-blur-sm w-full h-full flex flex-col overflow-hidden shadow-sm">
-              <div className="flex-1 overflow-y-auto scrollbar-hide space-y-6 p-8">
-                {messages.map((msg) => (
-                  <ChatBubble
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    attachments={msg.attachments}
-                    citations={msg.citations}
-                  />
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
+            <ChatSection messages={messages} interimTranscript={interimTranscript} />
 
             {/* Input Mode Toggle Area */}
             {inputMode === "text" ? (

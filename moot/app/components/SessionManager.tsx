@@ -35,7 +35,7 @@ export const SessionManager: FC<SessionManagerProps> = ({
         {/* New Session Button */}
         <button
           onClick={onNewSession}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white/60 backdrop-blur-sm border border-gray-200/60 rounded-xl hover:bg-white/80 transition-all shadow-sm hover:shadow-md"
+          className="flex items-center gap-2 px-4 py-2.5 bg-white/60 backdrop-blur-sm border border-gray-200/60 rounded-xl hover:bg-white/80 transition-all shadow-sm hover:shadow-md cursor-pointer"
         >
           <Plus size={18} className="text-gray-700" />
           <span className="text-sm font-medium text-gray-700">New Session</span>
