@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f1ea;
+  --foreground: #24160f;
+  --ink: #1f130a;
+  --muted: #6f5d50;
+  --accent: #b47b48;
+  --accent-strong: #8c5a2d;
+  --panel: #ffffff;
+  --line: #e6ddd3;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: radial-gradient(circle at 20% 20%, #fdf7ef 0%, #f0e4d8 35%, #e7ded5 70%);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent-strong);
+}
+
+::selection {
+  background: #f0e2d4;
+  color: var(--ink);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 60px rgba(34, 22, 12, 0.08);
+}
+
+.aurora-haze {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora-haze::before,
+.aurora-haze::after {
+  content: "";
+  position: absolute;
+  width: 46rem;
+  height: 46rem;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.55;
+  animation: auroraShift 18s ease-in-out infinite alternate;
+}
+
+.aurora-haze::before {
+  top: -10rem;
+  left: -8rem;
+  background: radial-gradient(circle at 30% 30%, #9fd7ff, rgba(255, 255, 255, 0));
+  animation-delay: -4s;
+}
+
+.aurora-haze::after {
+  bottom: -12rem;
+  right: -6rem;
+  background: radial-gradient(circle at 60% 30%, #c4a3ff, rgba(255, 255, 255, 0));
+}
+
+.voice-visual {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.voice-ring {
+  width: 240px;
+  height: 240px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: radial-gradient(circle, rgba(180, 123, 72, 0.1), rgba(255, 255, 255, 0));
+  animation: voicePulse 4s ease-in-out infinite;
+}
+
+.voice-wave {
+  position: absolute;
+  width: 620px;
+  height: 120px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(82, 39, 255, 0.18), rgba(180, 123, 72, 0.18), rgba(255, 147, 119, 0.12));
+  filter: blur(28px);
+  animation: waveSway 10s ease-in-out infinite;
+}
+
+@keyframes auroraShift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8%, -6%, 0) scale(1.05);
+  }
+  100% {
+    transform: translate3d(-6%, 10%, 0) scale(1.08);
+  }
+}
+
+@keyframes voicePulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.5;
+  }
+}
+
+@keyframes waveSway {
+  0% {
+    transform: translateX(-6%) scaleX(0.98);
+  }
+  50% {
+    transform: translateX(6%) scaleX(1.05);
+  }
+  100% {
+    transform: translateX(-6%) scaleX(0.98);
+  }
+}
