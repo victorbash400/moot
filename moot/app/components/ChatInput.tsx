@@ -11,6 +11,7 @@ interface ChatInputProps {
     onSendMessage: (message: string, pdfContextIds?: string[], attachments?: Attachment[]) => void;
     disabled?: boolean;
     currentAgent?: string | null;
+    onModeToggle?: () => void;
 }
 
 interface Agent {
@@ -32,6 +33,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     onSendMessage,
     disabled = false,
     currentAgent = null,
+    onModeToggle,
 }) => {
 
     const getAgentDisplay = (agentName: string | null) => {
@@ -245,7 +247,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="relative rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] pt-[12px] px-[2px] pb-[2px]" style={{ backgroundColor: '#365c12' }}>
+            <form onSubmit={handleSubmit} className="relative rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] pt-[12px] px-[2px] pb-[2px]" style={{ backgroundColor: '#5D4037' }}>
                 <div className="absolute top-1.5 left-0 right-0 flex items-center justify-center">
                     <div className="flex items-center gap-2 text-[10px] text-white font-medium opacity-80">
                         <span>{getAgentDisplay(currentAgent || agents.find(a => a.active)?.id || 'Shisui Chat')}</span>
@@ -275,7 +277,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                             type="submit"
                             disabled={disabled || !input.trim()}
                             className="w-9 h-9 rounded-full flex items-center justify-center transition-colors duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: (disabled || !input.trim()) ? '#d1d5db' : '#365c12' }}
+                            style={{ backgroundColor: (disabled || !input.trim()) ? '#d1d5db' : '#5D4037' }}
                         >
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -306,20 +308,19 @@ const ChatInput: React.FC<ChatInputProps> = ({
                                 className="hidden"
                             />
 
-                            {/* Agents button */}
-                            <button
-                                type="button"
-                                onClick={() => setShowAgentsModal(!showAgentsModal)}
-                                className="relative flex items-center justify-center p-0.5 hover:bg-gray-100 rounded-md transition-colors duration-200 group"
-                                title="Agents"
-                            >
-                                <SquareMousePointer className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
-                                {activeAgentsCount > 0 && (
-                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full flex items-center justify-center">
-                                        <span className="text-xs text-white font-medium" style={{ fontSize: '8px' }}>{activeAgentsCount}</span>
-                                    </div>
-                                )}
-                            </button>
+                            {/* Voice Mode Toggle button */}
+                            {onModeToggle && (
+                                <button
+                                    type="button"
+                                    onClick={onModeToggle}
+                                    className="flex items-center justify-center p-0.5 hover:bg-gray-100 rounded-md transition-colors duration-200 group"
+                                    title="Switch to Voice Mode"
+                                >
+                                    <svg className="w-5 h-5 text-gray-500 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                    </svg>
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -346,7 +347,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                                 <span className="text-sm text-gray-700 font-medium">{agent.name}</span>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); toggleAgent(agent.id); }}
-                                    className={`w-10 h-5 rounded-full transition-colors duration-200 relative ${agent.active ? 'bg-green-500' : 'bg-gray-300'
+                                    className={`w-10 h-5 rounded-full transition-colors duration-200 relative ${agent.active ? 'bg-[#8B4513]' : 'bg-gray-300'
                                         }`}
                                 >
                                     <div

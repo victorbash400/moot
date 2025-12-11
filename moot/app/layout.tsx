@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moot | Voice Advocacy Workbench",
-  description: "Voice-first debate practice for lawyers and advocates",
+  title: "moot",
+  description: "",
+  icons: {
+    icon: "/moot_logo.svg",
+  },
 };
 
 export default function RootLayout({

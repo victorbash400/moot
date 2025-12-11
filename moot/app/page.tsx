@@ -5,7 +5,6 @@ import { QuickActions } from "./components/QuickActions";
 import { VoiceControl } from "./components/VoiceControl";
 import { Sidebar } from "./components/Sidebar";
 import { SessionManager } from "./components/SessionManager";
-import Aurora from "./components/Aurora";
 import ChatBubble from "./components/ChatBubble";
 import ChatInput from "./components/ChatInput";
 
@@ -21,6 +20,7 @@ export default function Home() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [sessionState, setSessionState] = useState<"idle" | "active" | "paused">("idle");
   const [sessionId, setSessionId] = useState<string | null>(null); // Track session ID for memory
+  const [inputMode, setInputMode] = useState<"text" | "voice">("text"); // Toggle between text and voice input
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -35,8 +35,15 @@ export default function Home() {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    // Only scroll if we added a new message or it's the very start
+    // For streaming updates (content changes), we usually don't want to force scroll constantly 
+    // unless we are already at the bottom, but smooth scroll on every chunk causes jitter.
+    // Changing to only scroll on new message addition or first load.
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === 'user' || messages.length === 1) {
+      scrollToBottom();
+    }
+  }, [messages.length]); // Only trigger on count change, not content change
 
   const handleSendMessage = async (content: string, pdfContextIds?: string[], attachments?: any[]) => {
     // Add user message
@@ -88,7 +95,7 @@ export default function Home() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
-            
+
             if (data.type === 'session' && data.session_id) {
               // Store session ID for future messages - this enables memory!
               setSessionId(data.session_id);
@@ -128,16 +135,6 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-white">
-      {/* Aurora Background */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
-        <Aurora
-          colorStops={['#1e40af', '#4f46e5', '#6366f1']}
-          amplitude={0.8}
-          blend={0.6}
-          speed={0.5}
-        />
-      </div>
-
       <Sidebar isExpanded={isSidebarExpanded} onToggle={setIsSidebarExpanded} />
 
       <div
@@ -150,12 +147,12 @@ export default function Home() {
           <SessionManager />
         </div>
 
-        <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center p-6 pt-24 relative">
-          <div className="relative mx-auto flex w-full flex-col items-center justify-center gap-6 text-center h-[calc(100vh-200px)]">
+        <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center p-8 pt-32 relative">
+          <div className="relative mx-auto flex w-full flex-col items-center justify-center gap-6 text-center h-[calc(100vh-280px)]">
 
             {/* Glassy Chat Container - Wraps ChatBubbles */}
-            <div className="relative border border-gray-200/40 rounded-2xl p-6 bg-white/30 backdrop-blur-sm w-full h-full flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto scrollbar-hide space-y-6">
+            <div className="relative border border-[#d4c5b0]/40 rounded-2xl bg-[#fdfbf7]/50 backdrop-blur-sm w-full h-full flex flex-col overflow-hidden shadow-sm">
+              <div className="flex-1 overflow-y-auto scrollbar-hide space-y-6 p-8">
                 {messages.map((msg) => (
                   <ChatBubble
                     key={msg.id}
@@ -169,27 +166,31 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Voice Control - Added back between chat and input */}
-            <div className="flex flex-col items-center justify-center w-full z-10 -mt-4">
-              <VoiceControl state={sessionState === "active" ? "recording" : "idle"} />
-            </div>
+            {/* Input Mode Toggle Area */}
+            {inputMode === "text" ? (
+              <div className="w-full relative z-20">
+                <ChatInput
+                  onSendMessage={handleSendMessage}
+                  onModeToggle={() => setInputMode("voice")}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center w-full z-10 gap-6">
+                <VoiceControl state={sessionState === "active" ? "recording" : "idle"} />
 
-            {/* Chat Input Area */}
-            <div className="w-full relative z-20">
-              <ChatInput onSendMessage={handleSendMessage} />
-            </div>
+                {/* Dock with session controls and mode switch in voice mode */}
+                <QuickActions
+                  sessionState={sessionState}
+                  onStartSession={() => setSessionState("active")}
+                  onPauseSession={() => setSessionState("paused")}
+                  onResumeSession={() => setSessionState("active")}
+                  onEndSession={() => setSessionState("idle")}
+                  onNewSession={() => setSessionState("idle")}
+                  onSwitchToTextMode={() => setInputMode("text")}
+                />
+              </div>
+            )}
 
-          </div>
-
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2">
-            <QuickActions
-              sessionState={sessionState}
-              onStartSession={() => setSessionState("active")}
-              onPauseSession={() => setSessionState("paused")}
-              onResumeSession={() => setSessionState("active")}
-              onEndSession={() => setSessionState("idle")}
-              onNewSession={() => setSessionState("idle")}
-            />
           </div>
 
         </div>
