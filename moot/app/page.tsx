@@ -20,6 +20,7 @@ interface Message {
 export default function Home() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [sessionState, setSessionState] = useState<"idle" | "active" | "paused">("idle");
+  const [sessionId, setSessionId] = useState<string | null>(null); // Track session ID for memory
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -65,7 +66,7 @@ export default function Home() {
           message: content,
           agent_id: "legal_agent",
           user_id: "default_user",
-          session_id: null // Will be handled by backend
+          session_id: sessionId // Reuse session ID for memory!
         }),
       });
 
@@ -88,7 +89,11 @@ export default function Home() {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
             
-            if (data.type === 'content') {
+            if (data.type === 'session' && data.session_id) {
+              // Store session ID for future messages - this enables memory!
+              setSessionId(data.session_id);
+              console.log('📝 Session ID:', data.session_id);
+            } else if (data.type === 'content') {
               accumulatedContent += data.content;
               setMessages(prev => prev.map(msg =>
                 msg.id === assistantMsgId

@@ -102,16 +102,17 @@ async def chat_stream(request: ChatRequest):
             if "legal" in request.agent_id or "shisui" in request.agent_id:
                 from agents.legal_agent import legal_agent
                 
+                # Create runner with session service - this enables memory
                 runner = Runner(
                     agent=legal_agent,
                     app_name="moot_app",
                     session_service=session_service
                 )
 
-                # Stream the response with SSE mode
+                # Run with the session - ADK automatically loads history from session
                 async for event in runner.run_async(
                     user_id=request.user_id,
-                    session_id=session_id,
+                    session_id=session_id,  # This is the KEY - reuse the same session_id!
                     new_message=Content(role='user', parts=[Part(text=request.message)]),
                     run_config=RunConfig(streaming_mode=StreamingMode.SSE),
                 ):
