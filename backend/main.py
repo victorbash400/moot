@@ -1,8 +1,57 @@
+import os
+import json
+import uuid
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.agents.run_config import RunConfig, StreamingMode
+from google.genai.types import Content, Part
+from pydantic import BaseModel
+from typing import Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Setup Google Cloud credentials
+def setup_google_credentials():
+    """Setup Google credentials for Vertex AI"""
+    try:
+        # Get credentials path from env, or use default
+        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not credentials_path:
+            credentials_path = os.path.join(os.path.dirname(__file__), 'ascendant-woods-462020-n0-040fd17bd130.json')
+        
+        # If relative path, make it absolute
+        if not os.path.isabs(credentials_path):
+            credentials_path = os.path.join(os.path.dirname(__file__), credentials_path)
+        
+        if os.path.exists(credentials_path):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+            logger.info(f"✅ Service account file found: {credentials_path}")
+        else:
+            logger.warning(f"⚠️ Service account file not found at: {credentials_path}")
+        
+        # Set required Google Cloud environment variables from .env
+        if not os.getenv('GOOGLE_CLOUD_PROJECT'):
+            os.environ['GOOGLE_CLOUD_PROJECT'] = 'ascendant-woods-462020-n0'
+        if not os.getenv('GOOGLE_CLOUD_LOCATION'):
+            os.environ['GOOGLE_CLOUD_LOCATION'] = 'us-central1'
+        
+        logger.info(f"✅ Google Cloud configured: Project={os.environ['GOOGLE_CLOUD_PROJECT']}, Location={os.environ['GOOGLE_CLOUD_LOCATION']}")
+    except Exception as e:
+        logger.error(f"Failed to setup Google credentials: {e}")
+        raise
+
+# Setup credentials before anything else
+setup_google_credentials()
 
 app = FastAPI(title="Moot API", version="1.0.0")
 
@@ -14,16 +63,112 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize session service
+session_service = InMemorySessionService()
 
-@app.get("/")
-async def root():
-    return {"message": "Moot API"}
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str = "default_user"
+    session_id: Optional[str] = None
+    agent_id: str = "legal_agent"
 
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """Streaming chat endpoint with session memory"""
+    async def generate_stream():
+        try:
+            # Use existing session or create new one
+            session_id = request.session_id or str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+            # Ensure session exists - this enables memory across conversations
+            session = await session_service.get_session(
+                app_name="moot_app",
+                user_id=request.user_id,
+                session_id=session_id
+            )
+            if not session:
+                session = await session_service.create_session(
+                    app_name="moot_app",
+                    user_id=request.user_id,
+                    session_id=session_id,
+                    state={}
+                )
+                logger.info(f"📝 Created new session: {session_id}")
+            else:
+                logger.info(f"📝 Using existing session: {session_id}")
 
+            # Route to agent
+            if "legal" in request.agent_id or "shisui" in request.agent_id:
+                from agents.legal_agent import legal_agent
+                
+                runner = Runner(
+                    agent=legal_agent,
+                    app_name="moot_app",
+                    session_service=session_service
+                )
+
+                # Stream the response with SSE mode
+                async for event in runner.run_async(
+                    user_id=request.user_id,
+                    session_id=session_id,
+                    new_message=Content(role='user', parts=[Part(text=request.message)]),
+                    run_config=RunConfig(streaming_mode=StreamingMode.SSE),
+                ):
+                    # Handle tool calls
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, 'function_call') and part.function_call:
+                                tool_data = {
+                                    'type': 'tool_call',
+                                    'tool_name': part.function_call.name
+                                }
+                                yield f"data: {json.dumps(tool_data)}\n\n"
+                                logger.info(f"🔧 Tool call: {part.function_call.name}")
+                            
+                            # Stream text content
+                            elif hasattr(part, 'text') and part.text and event.partial:
+                                chunk_data = {
+                                    'type': 'content',
+                                    'content': part.text
+                                }
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            else:
+                error_data = {'type': 'error', 'error': f'Agent {request.agent_id} not implemented'}
+                yield f"data: {json.dumps(error_data)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in streaming chat: {str(e)}")
+            error_data = {'type': 'error', 'error': str(e)}
+            yield f"data: {json.dumps(error_data)}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+@app.post("/upload-pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+    """
+    Handle PDF uploads.
+    """
+    import shutil
+    import uuid
+    import os
+    
+    # Create uploads dir if not exists
+    os.makedirs("uploads", exist_ok=True)
+    
+    file_id = str(uuid.uuid4())
+    file_location = f"uploads/{file_id}_{file.filename}"
+    
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    return {"file_id": file_id, "filename": file.filename, "status": "ready"}
 
 if __name__ == "__main__":
     import uvicorn
