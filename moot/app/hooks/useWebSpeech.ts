@@ -100,6 +100,11 @@ export const useWebSpeech = ({
             };
 
             recognition.onerror = (event) => {
+                if (event.error === 'no-speech') {
+                    // Ignore no-speech error, just stop listening so we can restart if needed
+                    setIsListening(false);
+                    return;
+                }
                 console.error('Speech recognition error', event.error);
                 setIsListening(false);
             };

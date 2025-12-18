@@ -1,6 +1,6 @@
 "use client";
 
-import { FC, useState } from "react";
+import { FC, useState, useEffect } from "react";
 import {
     Settings,
     HelpCircle,
@@ -15,11 +15,38 @@ import {
 type SidebarProps = {
     isExpanded: boolean;
     onToggle: (expanded: boolean) => void;
+    onVoiceSelect?: (voiceId: string) => void;
 };
 
-export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle }) => {
+export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect }) => {
     const [sessionConfigExpanded, setSessionConfigExpanded] = useState(true);
     const [toolsExpanded, setToolsExpanded] = useState(true);
+    const [voices, setVoices] = useState<any[]>([]);
+    const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+    const [voiceError, setVoiceError] = useState(false);
+
+    const fetchVoices = async () => {
+        setIsLoadingVoices(true);
+        setVoiceError(false);
+        try {
+            const res = await fetch("http://localhost:8000/voices");
+            if (!res.ok) throw new Error("Backend offline");
+            const data = await res.json();
+            setVoices(data.voices || []);
+        } catch (err) {
+            setVoiceError(true);
+            // Silent catch to avoid console noise
+        } finally {
+            setIsLoadingVoices(false);
+        }
+    };
+
+    // Load voices only when expanding session config or on explicit interaction
+    useEffect(() => {
+        if (sessionConfigExpanded && voices.length === 0 && !voiceError) {
+            fetchVoices();
+        }
+    }, [sessionConfigExpanded]);
 
     return (
         <aside
@@ -83,6 +110,34 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle }) => {
                                     <option>Judge</option>
                                     <option>Witness</option>
                                     <option>Expert Witness</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-xs text-slate-600">Voice Preference</label>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); fetchVoices(); }}
+                                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium uppercase tracking-wider"
+                                        title="Refresh voices"
+                                    >
+                                        {isLoadingVoices ? "Loading..." : "Refresh"}
+                                    </button>
+                                </div>
+                                <select
+                                    className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${voiceError ? "border-red-300 text-red-500" : "border-slate-200"
+                                        }`}
+                                    onChange={(e) => onVoiceSelect?.(e.target.value)}
+                                    disabled={isLoadingVoices || voiceError}
+                                >
+                                    <option value="">
+                                        {voiceError ? "Backend Offline (Check Connection)" : "Default (No Voice)"}
+                                    </option>
+                                    {voices.map((voice: any) => (
+                                        <option key={voice.voice_id} value={voice.voice_id}>
+                                            {voice.name} ({voice.category})
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                         </div>

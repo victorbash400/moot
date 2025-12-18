@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+# Map GEMINI_API_KEY to GOOGLE_API_KEY if present (often used in env files)
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+if gemini_api_key:
+    # Strip quotes and whitespace that might be in the .env file
+    os.environ["GOOGLE_API_KEY"] = gemini_api_key.strip().strip('"').strip("'")
+    logger.info("✅ GEMINI_API_KEY found and mapped to GOOGLE_API_KEY")
+
 # Setup Google Cloud credentials
 def setup_google_credentials():
     """Setup Google credentials for Vertex AI"""
@@ -50,8 +57,11 @@ def setup_google_credentials():
         logger.error(f"Failed to setup Google credentials: {e}")
         raise
 
-# Setup credentials before anything else
-setup_google_credentials()
+# Setup credentials only if Vertex AI is enabled
+if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE").upper() == "TRUE":
+    setup_google_credentials()
+else:
+    logger.info("ℹ️ Using Gemini API Key mode (Vertex AI disabled)")
 
 app = FastAPI(title="Moot API", version="1.0.0")
 
@@ -71,6 +81,7 @@ class ChatRequest(BaseModel):
     user_id: str = "default_user"
     session_id: Optional[str] = None
     agent_id: str = "legal_agent"
+    voice_id: Optional[str] = None
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
@@ -109,6 +120,15 @@ async def chat_stream(request: ChatRequest):
                     session_service=session_service
                 )
 
+                # Voice Service (Lazy init)
+                from services.voice_service import VoiceService
+                voice_service = VoiceService()
+                
+                # Text buffer for sentence detection
+                text_buffer = ""
+                import re
+                import base64
+
                 # Run with the session - ADK automatically loads history from session
                 async for event in runner.run_async(
                     user_id=request.user_id,
@@ -129,12 +149,59 @@ async def chat_stream(request: ChatRequest):
                             
                             # Stream text content
                             elif hasattr(part, 'text') and part.text and event.partial:
+                                text_chunk = part.text
+                                
+                                # 1. Stream text immediately
                                 chunk_data = {
                                     'type': 'content',
-                                    'content': part.text
+                                    'content': text_chunk
                                 }
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
+
+                                # 2. Buffer for Audio
+                                if request.voice_id:
+                                    text_buffer += text_chunk
+                                    # Split by sentence endings (. ! ?)
+                                    # Look for punctuation followed by space or end of string
+                                    sentences = re.split(r'(?<=[.!?])\s+', text_buffer)
+                                    
+                                    # If we have complete sentences (more than 1 element or ends with punctuation), process them
+                                    if len(sentences) > 1:
+                                        # Process all except the last one (which might be incomplete)
+                                        to_process = sentences[:-1]
+                                        text_buffer = sentences[-1] # Keep the remainder
+                                        
+                                        logger.info(f"🎵 Processing {len(to_process)} sentence(s), remaining buffer: '{text_buffer[:50]}...'")
+                                        
+                                        for sentence in to_process:
+                                            if sentence.strip():
+                                                # Use non-streaming TTS for complete audio
+                                                full_audio = await voice_service.generate_speech(sentence, request.voice_id)
+                                                
+                                                if full_audio:
+                                                    logger.info(f"🎵 Sending audio chunk: {len(full_audio)} bytes for sentence")
+                                                    b64_audio = base64.b64encode(full_audio).decode('utf-8')
+                                                    audio_data = {
+                                                        'type': 'audio',
+                                                        'data': b64_audio
+                                                    }
+                                                    yield f"data: {json.dumps(audio_data)}\n\n"
                 
+                # Process remaining buffer
+                if request.voice_id and text_buffer.strip():
+                    logger.info(f"🎵 Processing remaining buffer: '{text_buffer}'")
+                    # Use non-streaming TTS for complete audio
+                    full_audio = await voice_service.generate_speech(text_buffer, request.voice_id)
+                    
+                    if full_audio:
+                        logger.info(f"🎵 Sending final audio chunk: {len(full_audio)} bytes")
+                        b64_audio = base64.b64encode(full_audio).decode('utf-8')
+                        audio_data = {
+                            'type': 'audio',
+                            'data': b64_audio
+                        }
+                        yield f"data: {json.dumps(audio_data)}\n\n"
+
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
             else:
                 error_data = {'type': 'error', 'error': f'Agent {request.agent_id} not implemented'}
@@ -150,6 +217,14 @@ async def chat_stream(request: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
     )
+
+@app.get("/voices")
+async def get_voices():
+    """Get available voices from ElevenLabs"""
+    from services.voice_service import VoiceService
+    service = VoiceService()
+    voices = await service.get_voices()
+    return {"voices": voices}
 
 @app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):

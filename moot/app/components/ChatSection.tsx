@@ -29,15 +29,32 @@ export const ChatSection: React.FC<ChatSectionProps> = ({ messages, interimTrans
     return (
         <div className="relative border border-[#d4c5b0]/40 rounded-2xl bg-[#fdfbf7]/50 backdrop-blur-sm w-full h-full flex flex-col overflow-hidden shadow-sm">
             <div className="flex-1 overflow-y-auto scrollbar-hide space-y-6 p-8">
-                {messages.map((msg) => (
-                    <ChatBubble
-                        key={msg.id}
-                        role={msg.role}
-                        content={msg.content}
-                        attachments={msg.attachments}
-                        citations={msg.citations}
-                    />
-                ))}
+                {messages.map((msg, index) => {
+                    const isLast = index === messages.length - 1;
+                    const isThinking = isLast && msg.role === 'assistant' && msg.content === '';
+
+                    if (isThinking) {
+                        return (
+                            <div key={msg.id} className="flex justify-start mb-8">
+                                <div className="max-w-md px-5 py-3">
+                                    <span className="text-sm font-medium tracking-wide thinking-text">
+                                        Thinking...
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <ChatBubble
+                            key={msg.id}
+                            role={msg.role}
+                            content={msg.content}
+                            attachments={msg.attachments}
+                            citations={msg.citations}
+                        />
+                    );
+                })}
                 {/* Show interim transcript as a pending user message or overlay */}
                 {interimTranscript && (
                     <div className="flex justify-end mb-8 opacity-60 animate-pulse">

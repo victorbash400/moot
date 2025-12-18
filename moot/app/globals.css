@@ -103,20 +103,24 @@ a {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
   }
+
   50% {
     transform: translate3d(8%, -6%, 0) scale(1.05);
   }
+
   100% {
     transform: translate3d(-6%, 10%, 0) scale(1.08);
   }
 }
 
 @keyframes voicePulse {
+
   0%,
   100% {
     transform: scale(0.96);
     opacity: 0.85;
   }
+
   50% {
     transform: scale(1.04);
     opacity: 0.5;
@@ -127,10 +131,37 @@ a {
   0% {
     transform: translateX(-6%) scaleX(0.98);
   }
+
   50% {
     transform: translateX(6%) scaleX(1.05);
   }
+
   100% {
     transform: translateX(-6%) scaleX(0.98);
   }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.thinking-text {
+  display: inline-block;
+  background: linear-gradient(90deg,
+      #8c5a2d 0%,
+      #8c5a2d 40%,
+      #f0e4d8 50%,
+      #8c5a2d 60%,
+      #8c5a2d 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 3s linear infinite;
 }
