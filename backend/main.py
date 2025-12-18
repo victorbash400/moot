@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import re
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +26,7 @@ gemini_api_key = os.getenv("GEMINI_API_KEY")
 if gemini_api_key:
     # Strip quotes and whitespace that might be in the .env file
     os.environ["GOOGLE_API_KEY"] = gemini_api_key.strip().strip('"').strip("'")
-    logger.info("✅ GEMINI_API_KEY found and mapped to GOOGLE_API_KEY")
+    logger.info("GEMINI_API_KEY found and mapped to GOOGLE_API_KEY")
 
 # Setup Google Cloud credentials
 def setup_google_credentials():
@@ -42,9 +43,9 @@ def setup_google_credentials():
         
         if os.path.exists(credentials_path):
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-            logger.info(f"✅ Service account file found: {credentials_path}")
+            logger.info(f"Service account file found: {credentials_path}")
         else:
-            logger.warning(f"⚠️ Service account file not found at: {credentials_path}")
+            logger.warning(f"Service account file not found at: {credentials_path}")
         
         # Set required Google Cloud environment variables from .env
         if not os.getenv('GOOGLE_CLOUD_PROJECT'):
@@ -52,7 +53,7 @@ def setup_google_credentials():
         if not os.getenv('GOOGLE_CLOUD_LOCATION'):
             os.environ['GOOGLE_CLOUD_LOCATION'] = 'us-central1'
         
-        logger.info(f"✅ Google Cloud configured: Project={os.environ['GOOGLE_CLOUD_PROJECT']}, Location={os.environ['GOOGLE_CLOUD_LOCATION']}")
+        logger.info(f"Google Cloud configured: Project={os.environ['GOOGLE_CLOUD_PROJECT']}, Location={os.environ['GOOGLE_CLOUD_LOCATION']}")
     except Exception as e:
         logger.error(f"Failed to setup Google credentials: {e}")
         raise
@@ -61,7 +62,7 @@ def setup_google_credentials():
 if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE").upper() == "TRUE":
     setup_google_credentials()
 else:
-    logger.info("ℹ️ Using Gemini API Key mode (Vertex AI disabled)")
+    logger.info("Using Gemini API Key mode (Vertex AI disabled)")
 
 app = FastAPI(title="Moot API", version="1.0.0")
 
@@ -76,12 +77,39 @@ app.add_middleware(
 # Initialize session service
 session_service = InMemorySessionService()
 
+class CaseContextModel(BaseModel):
+    case_type: Optional[str] = None
+    difficulty: Optional[str] = None
+    description: Optional[str] = None
+    uploaded_files: Optional[list] = None
+
+def strip_markdown(text: str) -> str:
+    """Remove markdown formatting for TTS."""
+    # Remove bold/italic markers
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **bold**
+    text = re.sub(r'\*(.+?)\*', r'\1', text)       # *italic*
+    text = re.sub(r'__(.+?)__', r'\1', text)       # __bold__
+    text = re.sub(r'_(.+?)_', r'\1', text)         # _italic_
+    # Remove headers
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # Remove links, keep text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove code blocks
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Remove horizontal rules
+    text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+    # Clean up extra whitespace
+    text = re.sub(r'\n\s*\n', '\n', text)
+    return text.strip()
+
 class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
     session_id: Optional[str] = None
     agent_id: str = "legal_agent"
     voice_id: Optional[str] = None
+    case_context: Optional[CaseContextModel] = None
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
@@ -105,9 +133,26 @@ async def chat_stream(request: ChatRequest):
                     session_id=session_id,
                     state={}
                 )
-                logger.info(f"📝 Created new session: {session_id}")
+                logger.info(f"Created new session: {session_id}")
             else:
-                logger.info(f"📝 Using existing session: {session_id}")
+                logger.info(f"Using existing session: {session_id}")
+
+            # Build the message - prepend case context on first message
+            user_message = request.message
+            
+            # If case context provided (first message), prepend it
+            if request.case_context and request.case_context.case_type:
+                context_prefix = f"""[CASE CONTEXT]
+Case Type: {request.case_context.case_type}
+Difficulty: {request.case_context.difficulty}
+Description: {request.case_context.description}
+"""
+                if request.case_context.uploaded_files:
+                    context_prefix += f"Available Documents: {', '.join(request.case_context.uploaded_files)}\n"
+                context_prefix += "[END CONTEXT]\n\n"
+                
+                user_message = context_prefix + request.message
+                logger.info(f"Case context added to session")
 
             # Route to agent
             if "legal" in request.agent_id or "shisui" in request.agent_id:
@@ -133,7 +178,7 @@ async def chat_stream(request: ChatRequest):
                 async for event in runner.run_async(
                     user_id=request.user_id,
                     session_id=session_id,  # This is the KEY - reuse the same session_id!
-                    new_message=Content(role='user', parts=[Part(text=request.message)]),
+                    new_message=Content(role='user', parts=[Part(text=user_message)]),
                     run_config=RunConfig(streaming_mode=StreamingMode.SSE),
                 ):
                     # Handle tool calls
@@ -145,7 +190,7 @@ async def chat_stream(request: ChatRequest):
                                     'tool_name': part.function_call.name
                                 }
                                 yield f"data: {json.dumps(tool_data)}\n\n"
-                                logger.info(f"🔧 Tool call: {part.function_call.name}")
+                                logger.info(f"Tool call: {part.function_call.name}")
                             
                             # Stream text content
                             elif hasattr(part, 'text') and part.text and event.partial:
@@ -171,15 +216,17 @@ async def chat_stream(request: ChatRequest):
                                         to_process = sentences[:-1]
                                         text_buffer = sentences[-1] # Keep the remainder
                                         
-                                        logger.info(f"🎵 Processing {len(to_process)} sentence(s), remaining buffer: '{text_buffer[:50]}...'")
+                                        logger.info(f"Processing {len(to_process)} sentence(s), remaining buffer: '{text_buffer[:50]}...'")
                                         
                                         for sentence in to_process:
                                             if sentence.strip():
-                                                # Use non-streaming TTS for complete audio
-                                                full_audio = await voice_service.generate_speech(sentence, request.voice_id)
+                                                # Strip markdown before TTS
+                                                clean_sentence = strip_markdown(sentence)
+                                                if clean_sentence:
+                                                    full_audio = await voice_service.generate_speech(clean_sentence, request.voice_id)
                                                 
                                                 if full_audio:
-                                                    logger.info(f"🎵 Sending audio chunk: {len(full_audio)} bytes for sentence")
+                                                    logger.info(f"Sending audio chunk: {len(full_audio)} bytes for sentence")
                                                     b64_audio = base64.b64encode(full_audio).decode('utf-8')
                                                     audio_data = {
                                                         'type': 'audio',
@@ -187,14 +234,14 @@ async def chat_stream(request: ChatRequest):
                                                     }
                                                     yield f"data: {json.dumps(audio_data)}\n\n"
                 
-                # Process remaining buffer
                 if request.voice_id and text_buffer.strip():
-                    logger.info(f"🎵 Processing remaining buffer: '{text_buffer}'")
-                    # Use non-streaming TTS for complete audio
-                    full_audio = await voice_service.generate_speech(text_buffer, request.voice_id)
+                    clean_buffer = strip_markdown(text_buffer)
+                    if clean_buffer:
+                        logger.info(f"Processing remaining buffer: '{clean_buffer}'")
+                        full_audio = await voice_service.generate_speech(clean_buffer, request.voice_id)
                     
                     if full_audio:
-                        logger.info(f"🎵 Sending final audio chunk: {len(full_audio)} bytes")
+                        logger.info(f"Sending final audio chunk: {len(full_audio)} bytes")
                         b64_audio = base64.b64encode(full_audio).decode('utf-8')
                         audio_data = {
                             'type': 'audio',
@@ -245,6 +292,62 @@ async def upload_pdf(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
         
     return {"file_id": file_id, "filename": file.filename, "status": "ready"}
+
+@app.get("/documents/{filename}")
+async def download_document(filename: str):
+    """
+    Download a generated document (PDF or Markdown).
+    """
+    from fastapi.responses import FileResponse
+    import os
+    
+    # Security: Only allow alphanumeric, underscore, dash, and dots
+    safe_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.")
+    if not all(c in safe_chars for c in filename):
+        return {"error": "Invalid filename"}
+    
+    generated_dir = os.path.join(os.path.dirname(__file__), "generated")
+    file_path = os.path.join(generated_dir, filename)
+    
+    if not os.path.exists(file_path):
+        return {"error": "Document not found"}
+    
+    # Determine media type
+    if filename.endswith('.pdf'):
+        media_type = "application/pdf"
+    elif filename.endswith('.md'):
+        media_type = "text/markdown"
+    else:
+        media_type = "application/octet-stream"
+    
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type=media_type
+    )
+
+@app.get("/documents")
+async def list_documents():
+    """
+    List all generated documents.
+    """
+    import os
+    generated_dir = os.path.join(os.path.dirname(__file__), "generated")
+    
+    if not os.path.exists(generated_dir):
+        return {"documents": []}
+    
+    documents = []
+    for filename in os.listdir(generated_dir):
+        if filename.endswith(('.pdf', '.md')):
+            file_path = os.path.join(generated_dir, filename)
+            documents.append({
+                "filename": filename,
+                "size": os.path.getsize(file_path),
+                "type": "pdf" if filename.endswith('.pdf') else "markdown"
+            })
+    
+    return {"documents": documents}
 
 if __name__ == "__main__":
     import uvicorn

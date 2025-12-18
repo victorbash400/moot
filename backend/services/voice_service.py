@@ -14,12 +14,12 @@ class VoiceService:
             os.getenv("ELEVEN_API_KEY")
         )
         if not self.api_key:
-            logger.warning("⚠️ No ElevenLabs API key found. Voice features will be disabled.")
+            logger.warning("No ElevenLabs API key found. Voice features will be disabled.")
             self.client = None
         else:
             # Strip any quotes or whitespace from the API key
             self.api_key = self.api_key.strip().strip('"').strip("'")
-            logger.info(f"✅ ElevenLabs API key loaded (first 8 chars: {self.api_key[:8]}...)")
+            logger.info(f"ElevenLabs API key loaded (first 8 chars: {self.api_key[:8]}...)")
             self.client = AsyncElevenLabs(api_key=self.api_key)
 
     async def get_voices(self) -> List[Dict]:
@@ -52,7 +52,7 @@ class VoiceService:
             return b""
 
         try:
-            logger.info(f"🎵 Requesting TTS for {len(text)} chars: '{text[:50]}...'")
+            logger.info(f"Requesting TTS for {len(text)} chars: '{text[:50]}...'")
             
             # Get the audio stream - DO NOT await, it returns an async generator directly
             audio_stream = self.client.text_to_speech.convert(
@@ -72,7 +72,7 @@ class VoiceService:
                     audio_chunks.append(chunk)
             
             full_audio = b"".join(audio_chunks)
-            logger.info(f"🎵 Received {len(full_audio)} bytes of audio")
+            logger.info(f"Received {len(full_audio)} bytes of audio")
             return full_audio
             
         except Exception as e:
@@ -90,7 +90,7 @@ class VoiceService:
             return
 
         try:
-            logger.info(f"🎵 Streaming TTS for {len(text)} chars: '{text[:50]}...'")
+            logger.info(f"Streaming TTS for {len(text)} chars: '{text[:50]}...'")
             
             # Get the audio stream - DO NOT await, it returns an async generator directly
             audio_stream = self.client.text_to_speech.convert(

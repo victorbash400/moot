@@ -7,6 +7,7 @@ export interface Message {
     content: string;
     attachments?: any[];
     citations?: string[];
+    toolCall?: string; // Active tool being used
 }
 
 interface ChatSectionProps {
@@ -52,6 +53,7 @@ export const ChatSection: React.FC<ChatSectionProps> = ({ messages, interimTrans
                             content={msg.content}
                             attachments={msg.attachments}
                             citations={msg.citations}
+                            toolCall={msg.toolCall}
                         />
                     );
                 })}

@@ -7,6 +7,7 @@ google-generativeai
 google-cloud-aiplatform
 requests
 elevenlabs
+perplexityai
 google-adk==1.3.0
 PyPDF2
 markdown2

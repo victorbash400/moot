@@ -8,7 +8,9 @@ import { SessionManager } from "./components/SessionManager";
 import { ChatSection, Message } from "./components/ChatSection";
 import ChatInput from "./components/ChatInput";
 import { useWebSpeech } from "./hooks/useWebSpeech";
-import { useAudioQueue } from "./hooks/useAudioQueue"; // Import audio queue hook
+import { useAudioQueue } from "./hooks/useAudioQueue";
+import { CaseContextBar, CaseContext } from "./components/CaseContextBar";
+import { CaseSetup } from "./components/CaseSetup";
 
 
 
@@ -21,24 +23,31 @@ export default function Home() {
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const isStreamActiveRef = useRef(false); // Track if we're receiving a stream
 
-  const { addToQueue, stop: stopAudio, isPlaying: isAudioPlaying, markStreamComplete } = useAudioQueue(); // Audio queue hook
-  const [messages, setMessages] = useState<Message[]>([
-    {
+  // Case context - required before starting session
+  const [caseContext, setCaseContext] = useState<CaseContext | null>(null);
+  const [isContextExpanded, setIsContextExpanded] = useState(false);
+
+  const { addToQueue, stop: stopAudio, isPlaying: isAudioPlaying, markStreamComplete } = useAudioQueue();
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  // Generate initial message based on case context
+  const handleCaseSetupComplete = useCallback((context: CaseContext) => {
+    setCaseContext(context);
+    setMessages([{
       id: '1',
       role: 'assistant',
-      content: "Present your opening argument on whether the contract's arbitration clause is unconscionable under state law."
-    }
-  ]);
+      content: `I'm ready to help with your ${context.caseType} case at the ${context.difficulty} level. ${context.uploadedFiles.length > 0 ? `I have access to ${context.uploadedFiles.length} document${context.uploadedFiles.length > 1 ? 's' : ''}.` : ''} How would you like to begin?`
+    }]);
+    setSessionState('active');
+  }, []);
 
   const handleNewSession = () => {
-    // Reset to initial state
-    setMessages([{
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: "Starting new session. How can I help you with your case today?"
-    }]);
+    // Reset everything for new session
+    setCaseContext(null);
+    setMessages([]);
     setSessionId(null);
     setSessionState("idle");
+    setIsContextExpanded(false);
   };
 
   const handleSelectSession = (id: string) => {
@@ -76,18 +85,31 @@ export default function Home() {
     isStreamActiveRef.current = true; // Mark stream as active
 
     try {
+      // Build request body - include case context only on first message
+      const requestBody: Record<string, unknown> = {
+        message: content,
+        agent_id: "legal_agent",
+        user_id: "default_user",
+        session_id: sessionId,
+        voice_id: selectedVoiceId || undefined
+      };
+
+      // Send case context only on first message (when no sessionId exists)
+      if (!sessionId && caseContext) {
+        requestBody.case_context = {
+          case_type: caseContext.caseType,
+          difficulty: caseContext.difficulty,
+          description: caseContext.description,
+          uploaded_files: caseContext.uploadedFiles.map(f => f.name)
+        };
+      }
+
       const response = await fetch("http://localhost:8000/chat/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          message: content,
-          agent_id: "legal_agent",
-          user_id: "default_user",
-          session_id: sessionId,
-          voice_id: selectedVoiceId || undefined // Pass selected voice
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok || !response.body) {
@@ -131,6 +153,12 @@ export default function Home() {
                 addToQueue(data.data);
               } else if (data.type === 'tool_call') {
                 console.log('🔧 Tool call:', data.tool_name);
+                // Update the message with the active tool
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMsgId
+                    ? { ...msg, toolCall: data.tool_name }
+                    : msg
+                ));
               } else if (data.type === 'done') {
                 console.log('✅ Stream complete');
                 // Mark stream as complete so audio queue knows no more chunks are coming
@@ -294,42 +322,55 @@ export default function Home() {
         <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center p-8 pt-32 relative">
           <div className="relative mx-auto flex w-full flex-col items-center justify-center gap-6 text-center h-[calc(100vh-280px)]">
 
-            {/* Glassy Chat Container - Wraps ChatBubbles */}
-            <ChatSection messages={messages} interimTranscript={interimTranscript} />
-
-            {/* Input Mode Toggle Area */}
-            {inputMode === "text" ? (
-              <div className="w-full relative z-20">
-                <ChatInput
-                  onSendMessage={handleSendMessage}
-                  onModeToggle={() => setInputMode("voice")}
-                />
-              </div>
+            {/* Show CaseSetup if no context defined */}
+            {!caseContext ? (
+              <CaseSetup onComplete={handleCaseSetupComplete} />
             ) : (
-              <div className="flex flex-col items-center justify-center w-full z-10 gap-6">
-                <VoiceControl mode={
-                  isAiSpeaking
-                    ? "ai-speaking"
-                    : sessionState === "active"
-                      ? (interimTranscript ? "user-speaking" : "listening")
-                      : "idle"
-                } />
-
-                {/* Dock with session controls and mode switch in voice mode */}
-                <QuickActions
-                  sessionState={sessionState}
-                  onStartSession={() => setSessionState("active")}
-                  onPauseSession={() => setSessionState("paused")}
-                  onResumeSession={() => setSessionState("active")}
-                  onEndSession={() => setSessionState("idle")}
-                  onNewSession={() => setSessionState("idle")}
-                  onSwitchToTextMode={() => setInputMode("text")}
+              <>
+                {/* Case Context Bar - above chat */}
+                <CaseContextBar
+                  context={caseContext}
+                  isExpanded={isContextExpanded}
+                  onToggle={() => setIsContextExpanded(!isContextExpanded)}
                 />
-              </div>
+
+                {/* Chat Section */}
+                <ChatSection messages={messages} interimTranscript={interimTranscript} />
+
+                {/* Input Mode Toggle Area */}
+                {inputMode === "text" ? (
+                  <div className="w-full relative z-20">
+                    <ChatInput
+                      onSendMessage={handleSendMessage}
+                      onModeToggle={() => setInputMode("voice")}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center w-full z-10 gap-6">
+                    <VoiceControl mode={
+                      isAiSpeaking
+                        ? "ai-speaking"
+                        : sessionState === "active"
+                          ? (interimTranscript ? "user-speaking" : "listening")
+                          : "idle"
+                    } />
+
+                    {/* Dock with session controls and mode switch in voice mode */}
+                    <QuickActions
+                      sessionState={sessionState}
+                      onStartSession={() => setSessionState("active")}
+                      onPauseSession={() => setSessionState("paused")}
+                      onResumeSession={() => setSessionState("active")}
+                      onEndSession={() => setSessionState("idle")}
+                      onNewSession={() => setSessionState("idle")}
+                      onSwitchToTextMode={() => setInputMode("text")}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
           </div>
-
         </div>
       </div>
     </main>
