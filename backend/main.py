@@ -84,7 +84,11 @@ class CaseContextModel(BaseModel):
     uploaded_files: Optional[list] = None
 
 def strip_markdown(text: str) -> str:
-    """Remove markdown formatting for TTS."""
+    """Remove markdown formatting and citation markers for TTS."""
+    # Remove CITATION markers (for citations panel)
+    text = re.sub(r'\[CITATION:.*?\]', '', text)
+    # Remove DOWNLOAD_LINK markers
+    text = re.sub(r'\[DOWNLOAD_LINK:[^\]]+\]', '', text)
     # Remove bold/italic markers
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **bold**
     text = re.sub(r'\*(.+?)\*', r'\1', text)       # *italic*
@@ -181,7 +185,7 @@ Description: {request.case_context.description}
                     new_message=Content(role='user', parts=[Part(text=user_message)]),
                     run_config=RunConfig(streaming_mode=StreamingMode.SSE),
                 ):
-                    # Handle tool calls
+                    # Handle tool calls and responses
                     if event.content and event.content.parts:
                         for part in event.content.parts:
                             if hasattr(part, 'function_call') and part.function_call:
@@ -191,6 +195,59 @@ Description: {request.case_context.description}
                                 }
                                 yield f"data: {json.dumps(tool_data)}\n\n"
                                 logger.info(f"Tool call: {part.function_call.name}")
+                            
+                            # Handle function responses - extract citations and links
+                            elif hasattr(part, 'function_response') and part.function_response:
+                                response_text = str(part.function_response.response.get('result', ''))
+                                
+                                # Extract and emit citations from tool response
+                                citation_pattern = r'\[CITATION:(.*?)\]'
+                                for match in re.finditer(citation_pattern, response_text):
+                                    try:
+                                        citation_data = json.loads(match.group(1))
+                                        citation_event = {
+                                            'type': 'citation',
+                                            'citation_type': 'source',
+                                            'title': citation_data.get('title', 'Source'),
+                                            'url': citation_data.get('url'),
+                                            'date': citation_data.get('date'),
+                                            'snippet': citation_data.get('snippet')
+                                        }
+                                        yield f"data: {json.dumps(citation_event)}\n\n"
+                                        logger.info(f"Citation emitted: {citation_data.get('title')}")
+                                    except json.JSONDecodeError:
+                                        pass
+                                
+                                # Extract DOWNLOAD_LINK markers (from generate_document)
+                                download_pattern = r'\[DOWNLOAD_LINK:([^\]]+)\]'
+                                for match in re.finditer(download_pattern, response_text):
+                                    filename = match.group(1)
+                                    citation_event = {
+                                        'type': 'citation',
+                                        'citation_type': 'document',
+                                        'title': filename.replace('_', ' ').replace('.pdf', ''),
+                                        'url': f'http://localhost:8000/documents/{filename}',
+                                        'snippet': 'Generated document - click to download'
+                                    }
+                                    yield f"data: {json.dumps(citation_event)}\n\n"
+                                    logger.info(f"Document link emitted: {filename}")
+                                
+                                # Extract LINK_PROVIDED markers (from provide_link tool)
+                                link_pattern = r'\[LINK_PROVIDED:([^|]+)\|([^|]+)\|([^\]]*)\]'
+                                for match in re.finditer(link_pattern, response_text):
+                                    title, url, description = match.groups()
+                                    # If it's a local file, make it downloadable
+                                    if not url.startswith('http'):
+                                        url = f'http://localhost:8000/documents/{url}'
+                                    citation_event = {
+                                        'type': 'citation',
+                                        'citation_type': 'document',
+                                        'title': title,
+                                        'url': url,
+                                        'snippet': description or 'Shared document'
+                                    }
+                                    yield f"data: {json.dumps(citation_event)}\n\n"
+                                    logger.info(f"Link provided: {title} -> {url}")
                             
                             # Stream text content
                             elif hasattr(part, 'text') and part.text and event.partial:

@@ -11,21 +11,27 @@ import { useWebSpeech } from "./hooks/useWebSpeech";
 import { useAudioQueue } from "./hooks/useAudioQueue";
 import { CaseContextBar, CaseContext } from "./components/CaseContextBar";
 import { CaseSetup } from "./components/CaseSetup";
+import { CitationsPanel, Citation } from "./components/CitationsPanel";
 
 
 
 export default function Home() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [sessionState, setSessionState] = useState<"idle" | "active" | "paused">("idle");
-  const [sessionId, setSessionId] = useState<string | null>(null); // Track session ID for memory
-  const [inputMode, setInputMode] = useState<"text" | "voice">("text"); // Toggle between text and voice input
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("UgBBYS2sOqTuMpoF3BR0"); // Default to Mark voice
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null); // Ref for immediate access
+  const [inputMode, setInputMode] = useState<"text" | "voice">("text");
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("UgBBYS2sOqTuMpoF3BR0");
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
-  const isStreamActiveRef = useRef(false); // Track if we're receiving a stream
+  const isStreamActiveRef = useRef(false);
 
   // Case context - required before starting session
   const [caseContext, setCaseContext] = useState<CaseContext | null>(null);
   const [isContextExpanded, setIsContextExpanded] = useState(false);
+
+  // Citations panel
+  const [citations, setCitations] = useState<Citation[]>([]);
+  const [isCitationsPanelOpen, setIsCitationsPanelOpen] = useState(false);
 
   const { addToQueue, stop: stopAudio, isPlaying: isAudioPlaying, markStreamComplete } = useAudioQueue();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -46,8 +52,11 @@ export default function Home() {
     setCaseContext(null);
     setMessages([]);
     setSessionId(null);
+    sessionIdRef.current = null;
     setSessionState("idle");
     setIsContextExpanded(false);
+    setCitations([]);
+    setIsCitationsPanelOpen(false);
   };
 
   const handleSelectSession = (id: string) => {
@@ -85,17 +94,18 @@ export default function Home() {
     isStreamActiveRef.current = true; // Mark stream as active
 
     try {
-      // Build request body - include case context only on first message
+      // Build request body - use ref for immediate session ID access
+      const currentSessionId = sessionIdRef.current;
       const requestBody: Record<string, unknown> = {
         message: content,
         agent_id: "legal_agent",
         user_id: "default_user",
-        session_id: sessionId,
+        session_id: currentSessionId,
         voice_id: selectedVoiceId || undefined
       };
 
       // Send case context only on first message (when no sessionId exists)
-      if (!sessionId && caseContext) {
+      if (!currentSessionId && caseContext) {
         requestBody.case_context = {
           case_type: caseContext.caseType,
           difficulty: caseContext.difficulty,
@@ -137,28 +147,80 @@ export default function Home() {
               const data = JSON.parse(line.trim().slice(6));
 
               if (data.type === 'session' && data.session_id) {
-                // Store session ID for future messages - this enables memory!
+                // Store session ID - update BOTH state and ref
+                // Ref updates immediately for next request, state for React
+                sessionIdRef.current = data.session_id;
                 setSessionId(data.session_id);
-                console.log('📝 Session ID:', data.session_id);
+                console.log('Session ID saved:', data.session_id);
               } else if (data.type === 'content') {
                 accumulatedContent += data.content;
+
+                // Strip CITATION markers (they come as separate events)
+                // Keep DOWNLOAD_LINK markers - ChatBubble will render them as buttons
+                const displayContent = accumulatedContent
+                  .replace(/\[CITATION:.*?\]/g, '')
+                  .replace(/\[LINK_PROVIDED:[^\]]+\]/g, '')
+                  .trim();
+
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMsgId
-                    ? { ...msg, content: accumulatedContent }
+                    ? { ...msg, content: displayContent }
                     : msg
                 ));
               } else if (data.type === 'audio') {
-                // Add audio chunk to queue (isAiSpeaking is controlled by audio playback)
-                console.log('🎵 Adding audio chunk to queue');
+                // Add audio chunk to queue
                 addToQueue(data.data);
+              } else if (data.type === 'citation' && data.citation_type === 'document') {
+                // Document links - add to citations panel AND to current message for inline display
+                console.log('Document link:', data.title);
+
+                // Add to citations panel
+                setCitations(prev => {
+                  if (prev.some(c => c.url === data.url)) return prev;
+                  return [...prev, {
+                    id: Date.now().toString() + Math.random().toString(36),
+                    type: 'document',
+                    title: data.title,
+                    url: data.url,
+                    snippet: data.snippet
+                  }];
+                });
+                setIsCitationsPanelOpen(true);
+
+                // Also add inline download link to current message
+                const filename = data.url.split('/').pop() || data.title;
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMsgId
+                    ? {
+                      ...msg,
+                      content: msg.content + `\n\n[DOWNLOAD_LINK:${filename}]`
+                    }
+                    : msg
+                ));
               } else if (data.type === 'tool_call') {
-                console.log('🔧 Tool call:', data.tool_name);
+                console.log('Tool call:', data.tool_name);
                 // Update the message with the active tool
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMsgId
                     ? { ...msg, toolCall: data.tool_name }
                     : msg
                 ));
+              } else if (data.type === 'citation' && data.citation_type !== 'document') {
+                // Source citations (not documents) - add to panel only
+                console.log('Citation received:', data.title);
+                setCitations(prev => {
+                  if (prev.some(c => c.url === data.url)) return prev;
+                  return [...prev, {
+                    id: Date.now().toString() + Math.random().toString(36),
+                    type: data.citation_type || 'source',
+                    title: data.title,
+                    url: data.url,
+                    date: data.date,
+                    snippet: data.snippet
+                  }];
+                });
+                // Auto-open panel when first citation arrives
+                setIsCitationsPanelOpen(true);
               } else if (data.type === 'done') {
                 console.log('✅ Stream complete');
                 // Mark stream as complete so audio queue knows no more chunks are coming
@@ -303,7 +365,15 @@ export default function Home() {
       <Sidebar
         isExpanded={isSidebarExpanded}
         onToggle={setIsSidebarExpanded}
-        onVoiceSelect={setSelectedVoiceId} // Pass selection handler
+        onVoiceSelect={setSelectedVoiceId}
+      />
+
+      {/* Citations Panel - right side */}
+      <CitationsPanel
+        citations={citations}
+        isOpen={isCitationsPanelOpen}
+        onClose={() => setIsCitationsPanelOpen(false)}
+        onOpen={() => setIsCitationsPanelOpen(true)}
       />
 
       <div

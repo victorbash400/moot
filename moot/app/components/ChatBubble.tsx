@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import Citations from './Citations';
-import { FileText, Download } from 'lucide-react';
+import { FileText, Download, Search, PenTool, Loader2 } from 'lucide-react';
 
 interface Attachment {
     id: string;
@@ -67,11 +67,19 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ role, content, attachments, cit
 
     return (
         <div className="mb-4">
-            {/* Tool indicator - minimal */}
+            {/* Tool indicator - minimal with icon */}
             {toolCall && (
                 <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-400">
-                    <span className="animate-pulse">🔧</span>
-                    <span className="font-medium">{toolCall.replace('_', ' ')}</span>
+                    {toolCall.includes('search') ? (
+                        <Search className="w-3 h-3 animate-pulse" />
+                    ) : toolCall.includes('document') || toolCall.includes('generate') ? (
+                        <PenTool className="w-3 h-3 animate-pulse" />
+                    ) : toolCall.includes('read') ? (
+                        <FileText className="w-3 h-3 animate-pulse" />
+                    ) : (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                    )}
+                    <span className="font-medium">{toolCall.replace(/_/g, ' ')}</span>
                 </div>
             )}
 
