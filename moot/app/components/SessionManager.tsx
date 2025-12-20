@@ -78,7 +78,7 @@ export const SessionManager: FC<SessionManagerProps> = ({
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900 group-hover:text-indigo-600">
+                      <div className="text-sm font-medium text-gray-900 group-hover:text-gray-700">
                         {session.title}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">

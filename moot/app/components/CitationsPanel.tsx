@@ -56,19 +56,20 @@ export const CitationsPanel: FC<CitationsPanelProps> = ({ citations, isOpen, onC
           </p>
         ) : (
           citations.map((citation) => (
-            <div
+            <a
               key={citation.id}
-              className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              href={citation.url}
+              download={citation.type === 'document' ? true : undefined}
+              target={citation.type === 'source' ? '_blank' : undefined}
+              rel={citation.type === 'source' ? 'noopener noreferrer' : undefined}
+              className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <div className="flex items-start gap-2">
                 {citation.type === 'source' && (
                   <ExternalLink className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                 )}
-                {citation.type === 'document' && (
-                  <Download className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                )}
-                {citation.type === 'link' && (
-                  <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                {(citation.type === 'document' || citation.type === 'link') && (
+                  <Download className="w-4 h-4 text-[#6F4E37] mt-0.5 flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-700 truncate">
@@ -82,19 +83,14 @@ export const CitationsPanel: FC<CitationsPanelProps> = ({ citations, isOpen, onC
                       {citation.snippet}
                     </p>
                   )}
-                  {citation.url && (
-                    <a
-                      href={citation.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[#6F4E37] hover:underline mt-1 inline-block truncate max-w-full"
-                    >
-                      {citation.url.replace(/^https?:\/\//, '').split('/')[0]}
-                    </a>
+                  {citation.type === 'document' && (
+                    <p className="text-xs text-[#6F4E37] mt-1 font-medium">
+                      Click to download
+                    </p>
                   )}
                 </div>
               </div>
-            </div>
+            </a>
           ))
         )}
       </div>

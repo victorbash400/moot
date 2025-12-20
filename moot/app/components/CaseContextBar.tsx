@@ -8,6 +8,7 @@ export interface CaseContext {
     difficulty: string;
     description: string;
     uploadedFiles: { id: string; name: string }[];
+    pendingFiles?: File[]; // Raw files to be uploaded after session creation
     aiSummary?: string;
 }
 

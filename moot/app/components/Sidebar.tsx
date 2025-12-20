@@ -9,8 +9,10 @@ import {
     Scale,
     BookOpen,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Info
 } from "lucide-react";
+import Link from "next/link";
 
 type SidebarProps = {
     isExpanded: boolean;
@@ -29,7 +31,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
         setIsLoadingVoices(true);
         setVoiceError(false);
         try {
-            const res = await fetch("http://localhost:8000/voices");
+            const res = await fetch("/api/voices");
             if (!res.ok) throw new Error("Backend offline");
             const data = await res.json();
             setVoices(data.voices || []);
@@ -84,7 +86,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                         <div className="space-y-3">
                             <div>
                                 <label className="text-xs text-slate-600 mb-1 block">Case Type</label>
-                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300">
                                     <option>Contract Dispute</option>
                                     <option>Criminal Defense</option>
                                     <option>Civil Rights</option>
@@ -95,7 +97,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
 
                             <div>
                                 <label className="text-xs text-slate-600 mb-1 block">AI Difficulty</label>
-                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300">
                                     <option>Beginner</option>
                                     <option>Intermediate</option>
                                     <option>Advanced</option>
@@ -105,7 +107,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
 
                             <div>
                                 <label className="text-xs text-slate-600 mb-1 block">AI Persona</label>
-                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <select className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300">
                                     <option>Opposing Counsel</option>
                                     <option>Judge</option>
                                     <option>Witness</option>
@@ -118,14 +120,14 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                                     <label className="text-xs text-slate-600">Voice Preference</label>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); fetchVoices(); }}
-                                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium uppercase tracking-wider"
+                                        className="text-[10px] text-slate-500 hover:text-slate-700 font-medium uppercase tracking-wider"
                                         title="Refresh voices"
                                     >
                                         {isLoadingVoices ? "Loading..." : "Refresh"}
                                     </button>
                                 </div>
                                 <select
-                                    className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 ${voiceError ? "border-red-300 text-red-500" : "border-slate-200"
+                                    className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 ${voiceError ? "border-red-300 text-red-500" : "border-slate-200"
                                         }`}
                                     onChange={(e) => onVoiceSelect?.(e.target.value)}
                                     disabled={isLoadingVoices || voiceError}
@@ -152,7 +154,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                     </div>
                     <textarea
                         placeholder="Paste case details, key facts, or arguments..."
-                        className="w-full h-32 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                        className="w-full h-32 px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 resize-none"
                     />
                 </div>
 
@@ -169,7 +171,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                     {toolsExpanded && (
                         <div className="space-y-2">
                             <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-white cursor-pointer transition-colors">
-                                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-slate-300 text-slate-600 focus:ring-slate-400 accent-slate-600" />
                                 <div className="flex items-center gap-2 flex-1">
                                     <Globe size={16} className="text-slate-600" />
                                     <span className="text-sm text-slate-700">Web Search</span>
@@ -177,7 +179,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                             </label>
 
                             <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-white cursor-pointer transition-colors">
-                                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-slate-300 text-slate-600 focus:ring-slate-400 accent-slate-600" />
                                 <div className="flex items-center gap-2 flex-1">
                                     <Scale size={16} className="text-slate-600" />
                                     <span className="text-sm text-slate-700">Case Law Access</span>
@@ -185,7 +187,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                             </label>
 
                             <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-white cursor-pointer transition-colors">
-                                <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-slate-600 focus:ring-slate-400 accent-slate-600" />
                                 <div className="flex items-center gap-2 flex-1">
                                     <BookOpen size={16} className="text-slate-600" />
                                     <span className="text-sm text-slate-700">Legal Citations</span>
@@ -199,7 +201,7 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                 <div className="space-y-3">
                     <span className="text-xs font-semibold text-slate-900 uppercase tracking-wider">Recent Sessions</span>
                     <div className="space-y-2">
-                        <button className="w-full text-left p-3 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 transition-colors">
+                        <button className="w-full text-left p-3 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors">
                             <div className="text-sm font-medium text-slate-900">Contract Arbitration</div>
                             <div className="text-xs text-slate-500 mt-1">2 hours ago • 23 min</div>
                         </button>
@@ -218,10 +220,20 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                 <button className="group flex w-full items-center justify-center rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-white hover:text-slate-900 hover:shadow-sm">
                     <Globe className="h-5 w-5 shrink-0" />
                 </button>
+
             </nav>
 
             {/* Bottom Actions */}
             <div className="p-4 space-y-2 border-t border-slate-100">
+                <Link
+                    href="/"
+                    className="group flex w-full items-center gap-4 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-white hover:text-slate-900 hover:shadow-sm"
+                >
+                    <Info className="h-5 w-5 shrink-0" />
+                    <span className={`whitespace-nowrap transition-all duration-300 ${isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
+                        Info
+                    </span>
+                </Link>
                 <button className="group flex w-full items-center gap-4 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-white hover:text-slate-900 hover:shadow-sm">
                     <Settings className="h-5 w-5 shrink-0" />
                     <span className={`whitespace-nowrap transition-all duration-300 ${isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>

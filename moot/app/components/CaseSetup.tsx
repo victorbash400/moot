@@ -33,7 +33,9 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
     const [caseType, setCaseType] = useState('');
     const [difficulty, setDifficulty] = useState('');
     const [description, setDescription] = useState('');
+    // Store uploaded file IDs - files are uploaded to 'staging' session immediately
     const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string }[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState('');
 
     const isValid = caseType && difficulty && description.trim().length >= 10;
@@ -42,21 +44,33 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
         const files = e.target.files;
         if (!files) return;
 
-        for (const file of Array.from(files)) {
-            const formData = new FormData();
-            formData.append('file', file);
+        setIsUploading(true);
 
+        // Upload files immediately to 'staging' session - they'll be moved to real session later
+        for (const file of Array.from(files)) {
             try {
-                const res = await fetch('http://localhost:8000/upload-pdf', {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('session_id', 'staging'); // Use staging session
+
+                const res = await fetch('/api/upload-pdf', {
                     method: 'POST',
                     body: formData,
                 });
-                const data = await res.json();
-                setUploadedFiles(prev => [...prev, { id: data.file_id, name: file.name }]);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setUploadedFiles(prev => [...prev, { id: data.file_id, name: file.name }]);
+                    console.log(`✅ Uploaded ${file.name} to staging`);
+                } else {
+                    console.error(`❌ Failed to upload ${file.name}`);
+                }
             } catch (err) {
                 console.error('Upload failed:', err);
             }
         }
+
+        setIsUploading(false);
         e.target.value = '';
     }, []);
 
@@ -79,6 +93,7 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
             caseType,
             difficulty,
             description,
+            // Files are already uploaded to staging - pass their IDs for moving
             uploadedFiles,
             aiSummary: summary,
         });
@@ -167,7 +182,7 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
 
                     {uploadedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-3">
-                            {uploadedFiles.map(file => (
+                            {uploadedFiles.map((file) => (
                                 <span key={file.id} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 rounded text-xs text-gray-600">
                                     <FileText className="w-3 h-3" />
                                     {file.name}

@@ -111,7 +111,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ role, content, attachments, cit
                             {downloads.map((filename, idx) => (
                                 <a
                                     key={idx}
-                                    href={`http://localhost:8000/documents/${filename}`}
+                                    href={`/api/documents?filename=${filename}`}
                                     download
                                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all group"
                                 >

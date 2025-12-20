@@ -12,6 +12,7 @@ interface ChatInputProps {
     disabled?: boolean;
     currentAgent?: string | null;
     onModeToggle?: () => void;
+    sessionId?: string | null; // Session ID for scoping document uploads
 }
 
 interface Agent {
@@ -34,6 +35,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     disabled = false,
     currentAgent = null,
     onModeToggle,
+    sessionId = null,
 }) => {
 
     const getAgentDisplay = (agentName: string | null) => {
@@ -133,13 +135,17 @@ const ChatInput: React.FC<ChatInputProps> = ({
             try {
                 const formData = new FormData();
                 formData.append('file', file);
+                // Include session ID if available for scoped storage
+                if (sessionId) {
+                    formData.append('session_id', sessionId);
+                }
 
                 // Update status to processing
                 setUploadedFiles(prev => prev.map(f =>
                     f.id === fileId ? { ...f, status: 'processing' } : f
                 ));
 
-                const API_BASE = "http://localhost:8000"; // Hardcoded valid backend
+                const API_BASE = "/api"; // Use Next.js API routes
                 const response = await fetch(`${API_BASE}/upload-pdf`, {
                     method: 'POST',
                     body: formData,

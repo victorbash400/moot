@@ -1,0 +1,487 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import { QuickActions } from "../components/QuickActions";
+import { VoiceControl } from "../components/VoiceControl";
+import { Sidebar } from "../components/Sidebar";
+import { SessionManager } from "../components/SessionManager";
+import { ChatSection, Message } from "../components/ChatSection";
+import ChatInput from "../components/ChatInput";
+import { useWebSpeech } from "../hooks/useWebSpeech";
+import { useAudioQueue } from "../hooks/useAudioQueue";
+import { CaseContextBar, CaseContext } from "../components/CaseContextBar";
+import { CaseSetup } from "../components/CaseSetup";
+import { CitationsPanel, Citation } from "../components/CitationsPanel";
+
+
+
+export default function Home() {
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+    const [sessionState, setSessionState] = useState<"idle" | "active" | "paused">("idle");
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const sessionIdRef = useRef<string | null>(null); // Ref for immediate access
+    const [inputMode, setInputMode] = useState<"text" | "voice">("text");
+    const [selectedVoiceId, setSelectedVoiceId] = useState<string>("UgBBYS2sOqTuMpoF3BR0");
+    const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+    const isStreamActiveRef = useRef(false);
+
+    // Case context - required before starting session
+    const [caseContext, setCaseContext] = useState<CaseContext | null>(null);
+    const [isContextExpanded, setIsContextExpanded] = useState(false);
+
+    // Citations panel
+    const [citations, setCitations] = useState<Citation[]>([]);
+    const [isCitationsPanelOpen, setIsCitationsPanelOpen] = useState(false);
+
+    // Staging file IDs from CaseSetup - files are uploaded to 'staging' session, then moved
+    const pendingStagingIdsRef = useRef<string[]>([]);
+
+    const { addToQueue, stop: stopAudio, isPlaying: isAudioPlaying, markStreamComplete } = useAudioQueue();
+    const [messages, setMessages] = useState<Message[]>([]);
+
+    // Move documents from staging session to the real session
+    const moveDocumentsFromStaging = useCallback(async (targetSessionId: string, stagingIds: string[]) => {
+        if (stagingIds.length === 0) return;
+
+        try {
+            const res = await fetch('/api/move-documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from_session: 'staging',
+                    to_session: targetSessionId,
+                    document_ids: stagingIds
+                })
+            });
+
+            if (res.ok) {
+                console.log(`✅ Moved ${stagingIds.length} documents to session ${targetSessionId}`);
+            } else {
+                console.error('❌ Failed to move documents from staging');
+            }
+        } catch (err) {
+            console.error('Move documents error:', err);
+        }
+    }, []);
+
+    // Generate initial message based on case context
+    const handleCaseSetupComplete = useCallback((context: CaseContext) => {
+        setCaseContext(context);
+        // Store staging file IDs - files were already uploaded to staging
+        pendingStagingIdsRef.current = context.uploadedFiles.map(f => f.id);
+        setMessages([{
+            id: '1',
+            role: 'assistant',
+            content: `I'm ready to help with your ${context.caseType} case at the ${context.difficulty} level. ${context.uploadedFiles.length > 0 ? `I have access to ${context.uploadedFiles.length} document${context.uploadedFiles.length > 1 ? 's' : ''}.` : ''} How would you like to begin?`
+        }]);
+        setSessionState('active');
+    }, []);
+
+    const handleNewSession = () => {
+        // Reset everything for new session
+        setCaseContext(null);
+        setMessages([]);
+        setSessionId(null);
+        sessionIdRef.current = null;
+        pendingStagingIdsRef.current = [];
+        setSessionState("idle");
+        setIsContextExpanded(false);
+        setCitations([]);
+        setIsCitationsPanelOpen(false);
+    };
+
+    const handleSelectSession = (id: string) => {
+        // In a real app, fetch session messages here
+        console.log("Loading session:", id);
+        setSessionId(id);
+        setMessages([{
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `Loaded session history for session ${id}. (Mock data)`
+        }]);
+    };
+
+    const handleSendMessage = async (content: string, pdfContextIds?: string[], attachments?: any[]) => {
+        // Add user message
+        const userMsg: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            content,
+            attachments
+        };
+        setMessages(prev => [...prev, userMsg]);
+
+        // Add placeholder assistant message
+        const assistantMsgId = (Date.now() + 1).toString();
+        setMessages(prev => [...prev, {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: ""
+        }]);
+
+        // CRITICAL: Set isAiSpeaking IMMEDIATELY to mute mic before any audio arrives
+        // This prevents the mic from picking up any ambient sound during the gap
+        setIsAiSpeaking(true);
+        isStreamActiveRef.current = true; // Mark stream as active
+
+        try {
+            // Build request body - use ref for immediate session ID access
+            const currentSessionId = sessionIdRef.current;
+            const requestBody: Record<string, unknown> = {
+                message: content,
+                agent_id: "legal_agent",
+                user_id: "default_user",
+                session_id: currentSessionId,
+                voice_id: selectedVoiceId || undefined
+            };
+
+            // Send case context only on first message (when no sessionId exists)
+            if (!currentSessionId && caseContext) {
+                requestBody.case_context = {
+                    case_type: caseContext.caseType,
+                    difficulty: caseContext.difficulty,
+                    description: caseContext.description,
+                    uploaded_files: caseContext.uploadedFiles.map(f => f.name)
+                };
+            }
+
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok || !response.body) {
+                throw new Error('Network response was not ok');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let accumulatedContent = "";
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+
+                // Keep the last part in buffer as it might be incomplete
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.trim().startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.trim().slice(6));
+
+                            if (data.type === 'session' && data.session_id) {
+                                // Store session ID - update BOTH state and ref
+                                // Ref updates immediately for next request, state for React
+                                sessionIdRef.current = data.session_id;
+                                setSessionId(data.session_id);
+                                console.log('Session ID saved:', data.session_id);
+
+                                // Move any documents from staging to this session
+                                if (pendingStagingIdsRef.current.length > 0) {
+                                    console.log(`📁 Moving ${pendingStagingIdsRef.current.length} documents from staging to session...`);
+                                    moveDocumentsFromStaging(data.session_id, pendingStagingIdsRef.current);
+                                    pendingStagingIdsRef.current = []; // Clear after moving
+                                }
+                            } else if (data.type === 'content') {
+                                accumulatedContent += data.content;
+
+                                // Strip CITATION markers (they come as separate events)
+                                // Keep DOWNLOAD_LINK markers - ChatBubble will render them as buttons
+                                const displayContent = accumulatedContent
+                                    .replace(/\[CITATION:.*?\]/g, '')
+                                    .replace(/\[LINK_PROVIDED:[^\]]+\]/g, '')
+                                    .trim();
+
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === assistantMsgId
+                                        ? { ...msg, content: displayContent }
+                                        : msg
+                                ));
+                            } else if (data.type === 'audio') {
+                                // Add audio chunk to queue
+                                addToQueue(data.data);
+                            } else if (data.type === 'citation' && data.citation_type === 'document') {
+                                // Document links - add to citations panel AND to current message for inline display
+                                console.log('Document link:', data.title);
+
+                                // Add to citations panel
+                                setCitations(prev => {
+                                    if (prev.some(c => c.url === data.url)) return prev;
+                                    return [...prev, {
+                                        id: Date.now().toString() + Math.random().toString(36),
+                                        type: 'document',
+                                        title: data.title,
+                                        url: data.url,
+                                        snippet: data.snippet
+                                    }];
+                                });
+                                setIsCitationsPanelOpen(true);
+
+                                // Also add inline download link to current message
+                                const filename = data.url.split('/').pop() || data.title;
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === assistantMsgId
+                                        ? {
+                                            ...msg,
+                                            content: msg.content + `\n\n[DOWNLOAD_LINK:${filename}]`
+                                        }
+                                        : msg
+                                ));
+                            } else if (data.type === 'tool_call') {
+                                console.log('Tool call:', data.tool_name);
+                                // Update the message with the active tool
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === assistantMsgId
+                                        ? { ...msg, toolCall: data.tool_name }
+                                        : msg
+                                ));
+                            } else if (data.type === 'citation' && data.citation_type !== 'document') {
+                                // Source citations (not documents) - add to panel only
+                                console.log('Citation received:', data.title);
+                                setCitations(prev => {
+                                    if (prev.some(c => c.url === data.url)) return prev;
+                                    return [...prev, {
+                                        id: Date.now().toString() + Math.random().toString(36),
+                                        type: data.citation_type || 'source',
+                                        title: data.title,
+                                        url: data.url,
+                                        date: data.date,
+                                        snippet: data.snippet
+                                    }];
+                                });
+                                // Auto-open panel when first citation arrives
+                                setIsCitationsPanelOpen(true);
+                            } else if (data.type === 'done') {
+                                console.log('✅ Stream complete');
+                                // Mark stream as complete so audio queue knows no more chunks are coming
+                                markStreamComplete();
+                                isStreamActiveRef.current = false; // Stream is done
+                                // If no voice selected (text mode), we can release isAiSpeaking now
+                                if (!selectedVoiceId) {
+                                    setIsAiSpeaking(false);
+                                }
+                            } else if (data.type === 'error') {
+                                console.error('❌ Error:', data.error);
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === assistantMsgId
+                                        ? { ...msg, content: `Error: ${data.error}` }
+                                        : msg
+                                ));
+                            }
+                        } catch (e) {
+                            console.error("Error parsing JSON chunk:", e);
+                            // Gracefully skip bad chunks
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Request failed:", err);
+            isStreamActiveRef.current = false; // Stream ended due to error
+            setIsAiSpeaking(false); // Reset on error
+            setMessages(prev => prev.map(msg =>
+                msg.id === assistantMsgId
+                    ? { ...msg, content: "Sorry, I encountered an error." }
+                    : msg
+            ));
+        }
+        // Don't use finally - let the audio queue control when to stop muting the mic
+    };
+
+    // Sync isAiSpeaking with actual audio playback when voice is selected
+    // This ensures mic stays muted for the entire duration of audio playback
+    // BUT only allow isAiSpeaking to go false if stream is also complete
+    useEffect(() => {
+        if (selectedVoiceId) {
+            console.log('🎵 Audio playback state changed:', isAudioPlaying ? 'PLAYING' : 'STOPPED');
+
+            if (isAudioPlaying) {
+                // Audio is playing - definitely keep mic muted
+                setIsAiSpeaking(true);
+            } else if (!isStreamActiveRef.current) {
+                // Audio stopped AND stream is complete - safe to unmute
+                console.log('🎤 Stream complete and audio stopped - allowing unmute');
+                setIsAiSpeaking(false);
+            } else {
+                console.log('🎤 Audio stopped but stream still active - keeping mic muted');
+            }
+        }
+    }, [isAudioPlaying, selectedVoiceId]);
+
+    // Track if we should accept speech - use ref to avoid stale closures
+    const shouldAcceptSpeechRef = useRef(true);
+    const micCooldownRef = useRef<NodeJS.Timeout | null>(null);
+    const wasAiSpeakingRef = useRef(false);
+
+    // Update the ref whenever isAiSpeaking or isAudioPlaying changes
+    useEffect(() => {
+        shouldAcceptSpeechRef.current = !isAiSpeaking && !isAudioPlaying;
+        console.log('🎤 Should accept speech:', shouldAcceptSpeechRef.current, '(isAiSpeaking:', isAiSpeaking, ', isAudioPlaying:', isAudioPlaying, ')');
+    }, [isAiSpeaking, isAudioPlaying]);
+
+    // STABLE callback - use useCallback to prevent hook reinitialization
+    const handleFinalSpeech = useCallback((transcript: string) => {
+        // CRITICAL: Reject any speech while AI is speaking or audio is playing
+        // This prevents the mic from picking up AI responses
+        if (!shouldAcceptSpeechRef.current) {
+            console.log('🚫 REJECTING transcript (AI is speaking):', transcript);
+            return;
+        }
+
+        if (transcript.trim()) {
+            console.log('✅ ACCEPTING transcript:', transcript);
+            handleSendMessage(transcript);
+        }
+    }, []); // Empty deps - uses ref for state
+
+    const { isListening, startListening, stopListening, interimTranscript } = useWebSpeech({
+        onFinalTranscript: handleFinalSpeech,
+        continuous: true
+    });
+
+    // Manage voice state based on session and mode
+    // CRITICAL: This is the HARD GATING logic - mic OFF when AI speaks, with cooldown
+    useEffect(() => {
+        // Clear any pending cooldown
+        if (micCooldownRef.current) {
+            clearTimeout(micCooldownRef.current);
+            micCooldownRef.current = null;
+        }
+
+        console.log('🎤 Mic state check - isAiSpeaking:', isAiSpeaking, 'sessionState:', sessionState);
+
+        // HARD STOP: If AI is speaking, KILL the mic immediately
+        if (isAiSpeaking) {
+            console.log('🔇 HARD MUTING MIC - AI is speaking');
+            wasAiSpeakingRef.current = true;
+            stopListening();
+            return;
+        }
+
+        // AI just stopped speaking - add cooldown before re-enabling
+        if (wasAiSpeakingRef.current) {
+            console.log('⏳ AI stopped - waiting 500ms cooldown before unmuting mic');
+            wasAiSpeakingRef.current = false;
+
+            micCooldownRef.current = setTimeout(() => {
+                if (inputMode === "voice" && sessionState === "active" && !isAiSpeaking) {
+                    console.log('🎤 Cooldown complete - UNMUTING MIC');
+                    startListening();
+                }
+            }, 500); // 500ms cooldown to let audio echoes dissipate
+            return;
+        }
+
+        // Normal mic management (no cooldown needed)
+        if (inputMode === "voice" && sessionState === "active") {
+            console.log('🎤 UNMUTING MIC - Ready to listen');
+            startListening();
+        } else {
+            console.log('🔇 MUTING MIC - Not in active voice session');
+            stopListening();
+        }
+
+        // Cleanup cooldown on unmount
+        return () => {
+            if (micCooldownRef.current) {
+                clearTimeout(micCooldownRef.current);
+            }
+        };
+    }, [inputMode, sessionState, isAiSpeaking, startListening, stopListening]);
+
+
+    return (
+        <main className="relative min-h-screen overflow-hidden bg-white">
+            <Sidebar
+                isExpanded={isSidebarExpanded}
+                onToggle={setIsSidebarExpanded}
+                onVoiceSelect={setSelectedVoiceId}
+            />
+
+            {/* Citations Panel - right side */}
+            <CitationsPanel
+                citations={citations}
+                isOpen={isCitationsPanelOpen}
+                onClose={() => setIsCitationsPanelOpen(false)}
+                onOpen={() => setIsCitationsPanelOpen(true)}
+            />
+
+            <div
+                className={`min-h-screen transition-all duration-300 ease-in-out ${isSidebarExpanded ? "pl-72" : "pl-20"
+                    }`}
+            >
+                {/* Top Bar with Session Manager */}
+                <div className="fixed top-0 right-0 left-0 z-30 flex items-center justify-between px-6 py-4"
+                    style={{ left: isSidebarExpanded ? '288px' : '80px' }}>
+                    <SessionManager
+                        onNewSession={handleNewSession}
+                        onSelectSession={handleSelectSession}
+                    />
+                </div>
+
+                <div className="mx-auto flex min-h-screen max-w-5xl flex-col items-center p-8 pt-32 relative">
+                    <div className="relative mx-auto flex w-full flex-col items-center justify-center gap-6 text-center h-[calc(100vh-280px)]">
+
+                        {/* Show CaseSetup if no context defined */}
+                        {!caseContext ? (
+                            <CaseSetup onComplete={handleCaseSetupComplete} />
+                        ) : (
+                            <>
+                                {/* Case Context Bar - above chat */}
+                                <CaseContextBar
+                                    context={caseContext}
+                                    isExpanded={isContextExpanded}
+                                    onToggle={() => setIsContextExpanded(!isContextExpanded)}
+                                />
+
+                                {/* Chat Section */}
+                                <ChatSection messages={messages} interimTranscript={interimTranscript} />
+
+                                {/* Input Mode Toggle Area */}
+                                {inputMode === "text" ? (
+                                    <div className="w-full relative z-20">
+                                        <ChatInput
+                                            onSendMessage={handleSendMessage}
+                                            onModeToggle={() => setInputMode("voice")}
+                                            sessionId={sessionId}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full z-10 gap-6">
+                                        <VoiceControl mode={
+                                            isAiSpeaking
+                                                ? "ai-speaking"
+                                                : sessionState === "active"
+                                                    ? (interimTranscript ? "user-speaking" : "listening")
+                                                    : "idle"
+                                        } />
+
+                                        {/* Dock with session controls and mode switch in voice mode */}
+                                        <QuickActions
+                                            sessionState={sessionState}
+                                            onStartSession={() => setSessionState("active")}
+                                            onPauseSession={() => setSessionState("paused")}
+                                            onResumeSession={() => setSessionState("active")}
+                                            onEndSession={() => setSessionState("idle")}
+                                            onNewSession={() => setSessionState("idle")}
+                                            onSwitchToTextMode={() => setInputMode("text")}
+                                        />
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                    </div>
+                </div>
+            </div>
+        </main>
+    );
+}

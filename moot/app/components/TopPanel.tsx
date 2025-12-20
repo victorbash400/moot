@@ -38,7 +38,7 @@ export const TopPanel: FC<TopPanelProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-gray-200/60">
         <div className="flex items-center gap-3">
-          <BookOpen size={20} className="text-indigo-600" />
+          <BookOpen size={20} className="text-[#8c5a2d]" />
           <h2 className="text-lg font-semibold text-gray-900">Citations & References</h2>
         </div>
         <button
@@ -54,11 +54,11 @@ export const TopPanel: FC<TopPanelProps> = ({
         {citations.map((citation, index) => (
           <div
             key={index}
-            className="p-4 bg-gray-50/80 rounded-xl border border-gray-200/40 hover:border-indigo-200 transition-colors group"
+            className="p-4 bg-gray-50/80 rounded-xl border border-gray-200/40 hover:border-gray-300 hover:bg-gray-100/80 transition-colors group"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-gray-900 group-hover:text-indigo-600">
+                <h3 className="text-sm font-semibold text-gray-900 group-hover:text-[#8c5a2d]">
                   {citation.title}
                 </h3>
                 <p className="text-xs text-gray-600 mt-1 font-mono">
