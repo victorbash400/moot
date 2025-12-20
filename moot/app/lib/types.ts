@@ -3,6 +3,7 @@
 export interface CaseContextRequest {
     case_type: string;
     difficulty: string;
+    ai_persona?: string; // 'assistant' | 'opposing_counsel' | 'judge' | 'witness' | 'mentor'
     description: string;
     uploaded_files?: string[];
 }
@@ -32,7 +33,7 @@ export interface StreamEvent {
 
 export interface Citation {
     id: string;
-    type: 'source' | 'document';
+    type: 'source' | 'document' | 'generated' | 'uploaded';
     title: string;
     url?: string;
     date?: string;

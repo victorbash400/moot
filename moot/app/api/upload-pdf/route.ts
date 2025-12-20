@@ -35,9 +35,10 @@ export async function POST(request: NextRequest) {
         if (file.name.toLowerCase().endsWith('.pdf')) {
             try {
                 // Use unpdf for reliable text extraction in serverless environments
-                const { text } = await extractText(buffer);
-                textContent = text;
-                console.log(`PDF parsed successfully: ${file.name} (${text.length} chars)`);
+                const result = await extractText(buffer);
+                // unpdf returns { text: string[] } - join pages into single string
+                textContent = Array.isArray(result.text) ? result.text.join('\n') : String(result.text);
+                console.log(`PDF parsed successfully: ${file.name} (${textContent.length} chars)`);
             } catch (error) {
                 console.error('Error parsing PDF:', error);
                 // Fallback: store metadata if extraction fails

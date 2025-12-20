@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { Runner, StreamingMode, isFinalResponse } from '@google/adk';
 import { Content, Part } from '@google/genai';
-import { legalAgent, sessionService, APP_NAME } from '../../lib/agent/legal-agent';
+import { legalAgent, sessionService, APP_NAME, PERSONA_INSTRUCTIONS } from '../../lib/agent/legal-agent';
 import { generateSpeech, stripMarkdown } from '../../lib/services/voice-service';
 import { ChatRequest } from '../../lib/types';
 import { setSessionContext } from '../../lib/tools/document-reader';
@@ -53,11 +53,16 @@ export async function POST(request: NextRequest) {
                 // Build user message with case context if first message
                 let userMessage = message;
                 if (case_context && (!session.events || session.events.length === 0)) {
+                    const persona = case_context.ai_persona || 'assistant';
+                    const personaBehavior = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.assistant;
+
                     const contextPrefix = `[CASE CONTEXT]
 Case Type: ${case_context.case_type}
 Difficulty: ${case_context.difficulty}
-Description: ${case_context.description}
 ${case_context.uploaded_files ? `Available Documents: ${case_context.uploaded_files.join(', ')}` : ''}
+
+**YOUR ROLE: ${persona.toUpperCase().replace('_', ' ')}**
+${personaBehavior}
 [END CONTEXT]
 
 `;
@@ -96,11 +101,15 @@ ${case_context.uploaded_files ? `Available Documents: ${case_context.uploaded_fi
 
                 // Process events from the agent
                 for await (const event of events) {
-                    // Skip the final complete message if we already streamed partial events
-                    // ADK sends partial=true for streaming chunks, then a final event without partial
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const eventAny = event as any;
-                    if (eventAny.partial === false || (eventAny.content && !eventAny.partial && fullTextResponse.length > 0)) {
+
+                    // Check if this event has functionResponse - we ALWAYS need to process those
+                    const hasFunctionResponse = event.content?.parts?.some((p: unknown) => (p as Record<string, unknown>).functionResponse);
+
+                    // Skip the final complete message if we already streamed partial events
+                    // BUT never skip events with functionResponse - we need those for markers
+                    if (!hasFunctionResponse && (eventAny.partial === false || (eventAny.content && !eventAny.partial && fullTextResponse.length > 0))) {
                         console.log('Skipping final non-partial event (already streamed)');
                         continue;
                     }
@@ -151,11 +160,12 @@ ${case_context.uploaded_files ? `Available Documents: ${case_context.uploaded_fi
                                     const filename = match[1];
                                     sendEvent({
                                         type: 'citation',
-                                        citation_type: 'document',
+                                        citation_type: 'generated',
                                         title: filename.replace(/_/g, ' ').replace(/\.(pdf|md)$/, ''),
                                         url: `/api/documents?filename=${encodeURIComponent(filename)}`,
-                                        snippet: 'Generated document - click to download'
+                                        snippet: 'AI-generated document'
                                     });
+                                    console.log(`Generated document link emitted: ${filename}`);
                                 }
 
                                 // Extract LINK_PROVIDED markers
@@ -164,11 +174,12 @@ ${case_context.uploaded_files ? `Available Documents: ${case_context.uploaded_fi
                                     const [, title, url, description] = match;
                                     sendEvent({
                                         type: 'citation',
-                                        citation_type: 'document',
+                                        citation_type: 'generated',
                                         title,
                                         url: url.startsWith('http') ? url : `/api/documents?filename=${encodeURIComponent(url)}`,
-                                        snippet: description || 'Shared document'
+                                        snippet: description || 'AI-generated document'
                                     });
+                                    console.log(`Link provided emitted: ${title}`);
                                 }
                             }
 

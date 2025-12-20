@@ -69,6 +69,19 @@ export default function Home() {
         setCaseContext(context);
         // Store staging file IDs - files were already uploaded to staging
         pendingStagingIdsRef.current = context.uploadedFiles.map(f => f.id);
+
+        // Add uploaded documents to the Sources panel immediately
+        if (context.uploadedFiles.length > 0) {
+            const uploadedCitations: Citation[] = context.uploadedFiles.map(f => ({
+                id: f.id,
+                type: 'uploaded' as const,
+                title: f.name.replace(/\.pdf$/i, '').replace(/_/g, ' '),
+                snippet: 'Uploaded document'
+            }));
+            setCitations(prev => [...prev, ...uploadedCitations]);
+            setIsCitationsPanelOpen(true);
+        }
+
         setMessages([{
             id: '1',
             role: 'assistant',
@@ -140,6 +153,7 @@ export default function Home() {
                 requestBody.case_context = {
                     case_type: caseContext.caseType,
                     difficulty: caseContext.difficulty,
+                    ai_persona: caseContext.aiPersona,
                     description: caseContext.description,
                     uploaded_files: caseContext.uploadedFiles.map(f => f.name)
                 };
@@ -208,16 +222,16 @@ export default function Home() {
                             } else if (data.type === 'audio') {
                                 // Add audio chunk to queue
                                 addToQueue(data.data);
-                            } else if (data.type === 'citation' && data.citation_type === 'document') {
-                                // Document links - add to citations panel AND to current message for inline display
-                                console.log('Document link:', data.title);
+                            } else if (data.type === 'citation' && (data.citation_type === 'document' || data.citation_type === 'generated')) {
+                                // Generated documents - add to citations panel
+                                console.log('Generated document:', data.title);
 
-                                // Add to citations panel
+                                // Add to citations panel with 'generated' type
                                 setCitations(prev => {
                                     if (prev.some(c => c.url === data.url)) return prev;
                                     return [...prev, {
                                         id: Date.now().toString() + Math.random().toString(36),
-                                        type: 'document',
+                                        type: 'generated',
                                         title: data.title,
                                         url: data.url,
                                         snippet: data.snippet
@@ -226,7 +240,7 @@ export default function Home() {
                                 setIsCitationsPanelOpen(true);
 
                                 // Also add inline download link to current message
-                                const filename = data.url.split('/').pop() || data.title;
+                                const filename = data.url?.split('/').pop() || data.title;
                                 setMessages(prev => prev.map(msg =>
                                     msg.id === assistantMsgId
                                         ? {
@@ -243,14 +257,14 @@ export default function Home() {
                                         ? { ...msg, toolCall: data.tool_name }
                                         : msg
                                 ));
-                            } else if (data.type === 'citation' && data.citation_type !== 'document') {
-                                // Source citations (not documents) - add to panel only
+                            } else if (data.type === 'citation' && data.citation_type !== 'generated') {
+                                // Source citations (web sources) - add to panel only
                                 console.log('Citation received:', data.title);
                                 setCitations(prev => {
                                     if (prev.some(c => c.url === data.url)) return prev;
                                     return [...prev, {
                                         id: Date.now().toString() + Math.random().toString(36),
-                                        type: data.citation_type || 'source',
+                                        type: 'source',
                                         title: data.title,
                                         url: data.url,
                                         date: data.date,

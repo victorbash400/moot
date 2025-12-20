@@ -7,6 +7,7 @@ export interface CaseContext {
     caseType: string;
     difficulty: string;
     description: string;
+    aiPersona: string; // 'assistant' | 'opposing_counsel' | 'judge' | 'witness' | 'mentor'
     uploadedFiles: { id: string; name: string }[];
     pendingFiles?: File[]; // Raw files to be uploaded after session creation
     aiSummary?: string;

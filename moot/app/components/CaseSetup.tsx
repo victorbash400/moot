@@ -29,16 +29,25 @@ const DIFFICULTY_LEVELS = [
     { value: 'Expert', label: 'IV' },
 ];
 
+const AI_PERSONAS = [
+    { value: 'assistant', label: 'Legal Assistant', description: 'Helpful guide for your case' },
+    { value: 'opposing_counsel', label: 'Opposing Counsel', description: 'Tough adversary with solid arguments' },
+    { value: 'judge', label: 'Judge', description: 'Neutral arbiter evaluating your arguments' },
+    { value: 'witness', label: 'Witness', description: 'Role-play witness examination' },
+    { value: 'mentor', label: 'Mentor', description: 'Experienced guide teaching legal strategy' },
+];
+
 export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
     const [caseType, setCaseType] = useState('');
     const [difficulty, setDifficulty] = useState('');
+    const [aiPersona, setAiPersona] = useState('assistant');
     const [description, setDescription] = useState('');
     // Store uploaded file IDs - files are uploaded to 'staging' session immediately
     const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string }[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState('');
 
-    const isValid = caseType && difficulty && description.trim().length >= 10;
+    const isValid = caseType && difficulty && aiPersona && description.trim().length >= 10;
 
     const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -92,12 +101,13 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
         onComplete({
             caseType,
             difficulty,
+            aiPersona,
             description,
             // Files are already uploaded to staging - pass their IDs for moving
             uploadedFiles,
             aiSummary: summary,
         });
-    }, [caseType, difficulty, description, uploadedFiles, isValid, onComplete]);
+    }, [caseType, difficulty, aiPersona, description, uploadedFiles, isValid, onComplete]);
 
     return (
         <div className="w-full max-w-lg mx-auto">
@@ -147,6 +157,24 @@ export const CaseSetup: FC<CaseSetupProps> = ({ onComplete, onCancel }) => {
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* AI Persona */}
+                <div>
+                    <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                        AI Role
+                    </label>
+                    <select
+                        value={aiPersona}
+                        onChange={(e) => setAiPersona(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-white text-gray-700 text-sm focus:outline-none focus:border-gray-300 transition-all"
+                    >
+                        {AI_PERSONAS.map(persona => (
+                            <option key={persona.value} value={persona.value}>
+                                {persona.label} — {persona.description}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* Case Description */}

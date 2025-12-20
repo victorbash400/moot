@@ -1,11 +1,11 @@
 'use client';
 
-import { FC } from "react";
-import { X, ExternalLink, FileText, Download, ChevronRight } from "lucide-react";
+import { FC, useState, useMemo } from "react";
+import { X, ExternalLink, FileText, Download, ChevronRight, ChevronDown, Upload, FilePlus, Globe } from "lucide-react";
 
 export interface Citation {
   id: string;
-  type: 'source' | 'document' | 'link';
+  type: 'source' | 'document' | 'generated' | 'uploaded';
   title: string;
   url?: string;
   date?: string;
@@ -19,7 +19,96 @@ interface CitationsPanelProps {
   onOpen: () => void;
 }
 
+interface GroupProps {
+  title: string;
+  icon: React.ReactNode;
+  items: Citation[];
+  defaultOpen?: boolean;
+  accentColor?: string;
+}
+
+const CitationGroup: FC<GroupProps> = ({ title, icon, items, defaultOpen = true, accentColor = 'text-gray-500' }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        {isOpen ? (
+          <ChevronDown className="w-3 h-3" />
+        ) : (
+          <ChevronRight className="w-3 h-3" />
+        )}
+        <span className={accentColor}>{icon}</span>
+        <span className="uppercase tracking-wider">{title}</span>
+        <span className="ml-auto text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">
+          {items.length}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="mt-1 space-y-1.5 pl-5">
+          {items.map((item) => (
+            <a
+              key={item.id}
+              href={item.url}
+              download={item.type === 'document' || item.type === 'generated' || item.type === 'uploaded' ? true : undefined}
+              target={item.type === 'source' ? '_blank' : undefined}
+              rel={item.type === 'source' ? 'noopener noreferrer' : undefined}
+              className="block p-2.5 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer border border-transparent hover:border-gray-200"
+            >
+              <div className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate leading-tight">
+                    {item.title}
+                  </p>
+                  {item.snippet && (
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                      {item.snippet}
+                    </p>
+                  )}
+                </div>
+                {item.type === 'source' && (
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                )}
+                {(item.type === 'generated' || item.type === 'document' || item.type === 'uploaded') && (
+                  <Download className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
+                )}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const CitationsPanel: FC<CitationsPanelProps> = ({ citations, isOpen, onClose, onOpen }) => {
+  // Group citations by type
+  const grouped = useMemo(() => {
+    const uploaded: Citation[] = [];
+    const generated: Citation[] = [];
+    const sources: Citation[] = [];
+
+    for (const c of citations) {
+      if (c.type === 'uploaded') {
+        uploaded.push(c);
+      } else if (c.type === 'generated' || c.type === 'document') {
+        generated.push(c);
+      } else {
+        sources.push(c);
+      }
+    }
+
+    return { uploaded, generated, sources };
+  }, [citations]);
+
+  const totalCount = citations.length;
+
   if (!isOpen) {
     // Collapsed state - just a tab
     return (
@@ -29,7 +118,7 @@ export const CitationsPanel: FC<CitationsPanelProps> = ({ citations, isOpen, onC
       >
         <ChevronRight className="w-4 h-4 rotate-180" />
         <span className="text-xs font-medium writing-mode-vertical" style={{ writingMode: 'vertical-rl' }}>
-          Sources {citations.length > 0 && `(${citations.length})`}
+          Sources {totalCount > 0 && `(${totalCount})`}
         </span>
       </button>
     );
@@ -49,57 +138,43 @@ export const CitationsPanel: FC<CitationsPanelProps> = ({ citations, isOpen, onC
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {citations.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">
-            Sources and documents will appear here as the conversation progresses.
-          </p>
+      <div className="flex-1 overflow-y-auto p-3">
+        {totalCount === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+            <p className="text-sm text-gray-400">
+              Sources and documents will appear here
+            </p>
+          </div>
         ) : (
-          citations.map((citation) => (
-            <a
-              key={citation.id}
-              href={citation.url}
-              download={citation.type === 'document' ? true : undefined}
-              target={citation.type === 'source' ? '_blank' : undefined}
-              rel={citation.type === 'source' ? 'noopener noreferrer' : undefined}
-              className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-            >
-              <div className="flex items-start gap-2">
-                {citation.type === 'source' && (
-                  <ExternalLink className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                )}
-                {(citation.type === 'document' || citation.type === 'link') && (
-                  <Download className="w-4 h-4 text-[#6F4E37] mt-0.5 flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700 truncate">
-                    {citation.title}
-                  </p>
-                  {citation.date && (
-                    <p className="text-xs text-gray-400 mt-0.5">{citation.date}</p>
-                  )}
-                  {citation.snippet && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">
-                      {citation.snippet}
-                    </p>
-                  )}
-                  {citation.type === 'document' && (
-                    <p className="text-xs text-[#6F4E37] mt-1 font-medium">
-                      Click to download
-                    </p>
-                  )}
-                </div>
-              </div>
-            </a>
-          ))
+          <>
+            <CitationGroup
+              title="Your Documents"
+              icon={<Upload className="w-3.5 h-3.5" />}
+              items={grouped.uploaded}
+              accentColor="text-[#6F4E37]"
+            />
+            <CitationGroup
+              title="Generated"
+              icon={<FilePlus className="w-3.5 h-3.5" />}
+              items={grouped.generated}
+              accentColor="text-gray-600"
+            />
+            <CitationGroup
+              title="Citations"
+              icon={<Globe className="w-3.5 h-3.5" />}
+              items={grouped.sources}
+              accentColor="text-blue-500"
+            />
+          </>
         )}
       </div>
 
       {/* Footer hint */}
-      {citations.length > 0 && (
+      {totalCount > 0 && (
         <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
-          <p className="text-xs text-gray-400 text-center">
-            Click any source to open in new tab
+          <p className="text-[10px] text-gray-400 text-center">
+            Click to download or open in new tab
           </p>
         </div>
       )}
