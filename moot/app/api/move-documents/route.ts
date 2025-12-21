@@ -2,6 +2,7 @@
  * Move Documents API Route
  * 
  * Move documents from one session (e.g., 'staging') to another session.
+ * Uses Vercel KV in production, falls back to file storage locally.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -9,6 +10,8 @@ import fs from 'fs';
 import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), '.documents.json');
+const KV_STORE_KEY = 'moot:documents';
+const useKV = !!process.env.KV_REST_API_URL;
 
 interface DocumentItem {
     name: string;
@@ -22,11 +25,17 @@ interface DocumentStore {
     };
 }
 
-function loadStore(): DocumentStore {
+async function loadStoreAsync(): Promise<DocumentStore> {
     try {
-        if (fs.existsSync(DB_PATH)) {
-            const data = fs.readFileSync(DB_PATH, 'utf-8');
-            return JSON.parse(data);
+        if (useKV) {
+            const { kv } = await import('@vercel/kv');
+            const data = await kv.get<DocumentStore>(KV_STORE_KEY);
+            return data || {};
+        } else {
+            if (fs.existsSync(DB_PATH)) {
+                const data = fs.readFileSync(DB_PATH, 'utf-8');
+                return JSON.parse(data);
+            }
         }
     } catch (e) {
         console.error('Failed to load document store:', e);
@@ -34,9 +43,14 @@ function loadStore(): DocumentStore {
     return {};
 }
 
-function saveStore(store: DocumentStore) {
+async function saveStoreAsync(store: DocumentStore): Promise<void> {
     try {
-        fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+        if (useKV) {
+            const { kv } = await import('@vercel/kv');
+            await kv.set(KV_STORE_KEY, store);
+        } else {
+            fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+        }
     } catch (e) {
         console.error('Failed to save document store:', e);
     }
@@ -54,7 +68,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const store = loadStore();
+        const store = await loadStoreAsync();
         const sourceSession = store[from_session] || {};
 
         if (!store[to_session]) {
@@ -83,7 +97,7 @@ export async function POST(request: NextRequest) {
             delete store[from_session];
         }
 
-        saveStore(store);
+        await saveStoreAsync(store);
 
         return NextResponse.json({
             success: true,

@@ -134,7 +134,7 @@ ${personaBehavior}
 
                                 // Extract and emit citations
                                 // Use a more robust regex that handles potential newlines or spacing in JSON
-                                const citationPattern = /\[CITATION:(\{.*?\})\]/gs;
+                                const citationPattern = /\[CITATION:(\{[\s\S]*?\})\]/g;
                                 let match;
                                 while ((match = citationPattern.exec(responseText)) !== null) {
                                     try {
@@ -190,7 +190,7 @@ ${personaBehavior}
                                 // Remove CITATION markers and LINK_PROVIDED markers
                                 // We use a global replace with dotAll to catch multiline JSON
                                 const cleanText = part.text
-                                    .replace(/\[CITATION:\{.*?\}\]/gs, '')
+                                    .replace(/\[CITATION:\{[\s\S]*?\}\]/g, '')
                                     .replace(/\[DOWNLOAD_LINK:[^\]]+\]/g, '') // Keep DOWNLOAD_LINK for ChatBubble? No, frontend handles event
                                     .replace(/\[LINK_PROVIDED:[^\]]+\]/g, '');
 

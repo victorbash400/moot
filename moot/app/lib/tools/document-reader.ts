@@ -3,6 +3,8 @@
  * 
  * Reads and extracts content from uploaded documents (PDFs, text files, etc.)
  * Documents are scoped by session ID for isolation between chat sessions.
+ * 
+ * Storage: Uses Vercel KV in production, falls back to file storage locally.
  */
 
 import { z } from 'zod';
@@ -17,8 +19,11 @@ export const documentReaderSchema = z.object({
 
 export type DocumentReaderParams = z.infer<typeof documentReaderSchema>;
 
-// File path for persistence
+// File path for local persistence
 const DB_PATH = path.join(process.cwd(), '.documents.json');
+
+// Check if Vercel KV is available
+const useKV = !!process.env.KV_REST_API_URL;
 
 interface DocumentItem {
     name: string;
@@ -50,7 +55,33 @@ export function getSessionContext(): string | null {
     return currentSessionId;
 }
 
-// Helper to load store
+// ============ STORAGE ABSTRACTION ============
+
+// KV key for the document store
+const KV_STORE_KEY = 'moot:documents';
+
+// Load store from KV or file
+async function loadStoreAsync(): Promise<DocumentStore> {
+    try {
+        if (useKV) {
+            const { kv } = await import('@vercel/kv');
+            const data = await kv.get<DocumentStore>(KV_STORE_KEY);
+            return data || {};
+        } else {
+            // File-based storage for local dev
+            if (fs.existsSync(DB_PATH)) {
+                const data = fs.readFileSync(DB_PATH, 'utf-8');
+                return JSON.parse(data);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load document store:', e);
+    }
+    return {};
+}
+
+// Synchronous load for backward compatibility (file only) - kept for potential future use
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function loadStore(): DocumentStore {
     try {
         if (fs.existsSync(DB_PATH)) {
@@ -63,7 +94,23 @@ function loadStore(): DocumentStore {
     return {};
 }
 
-// Helper to save store
+// Save store to KV or file
+async function saveStoreAsync(store: DocumentStore): Promise<void> {
+    try {
+        if (useKV) {
+            const { kv } = await import('@vercel/kv');
+            await kv.set(KV_STORE_KEY, store);
+        } else {
+            // File-based storage for local dev
+            fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+        }
+    } catch (e) {
+        console.error('Failed to save document store:', e);
+    }
+}
+
+// Synchronous save for backward compatibility (file only) - kept for potential future use
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function saveStore(store: DocumentStore) {
     try {
         fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
@@ -81,12 +128,12 @@ function saveStore(store: DocumentStore) {
  * @param type - MIME type
  */
 export async function addDocument(sessionId: string, id: string, name: string, content: string, type: string) {
-    const store = loadStore();
+    const store = await loadStoreAsync();
     if (!store[sessionId]) {
         store[sessionId] = {};
     }
     store[sessionId][id] = { name, content, type };
-    saveStore(store);
+    await saveStoreAsync(store);
     console.log(`Document added to session ${sessionId}: ${name}`);
 }
 
@@ -97,7 +144,7 @@ export async function getDocumentNames(sessionId?: string): Promise<string[]> {
     const sid = sessionId || currentSessionId;
     if (!sid) return [];
 
-    const store = loadStore();
+    const store = await loadStoreAsync();
     const sessionDocs = store[sid] || {};
     return Object.values(sessionDocs).map(d => d.name);
 }
@@ -105,11 +152,11 @@ export async function getDocumentNames(sessionId?: string): Promise<string[]> {
 /**
  * Clear all documents for a session
  */
-export function clearSessionDocuments(sessionId: string) {
-    const store = loadStore();
+export async function clearSessionDocuments(sessionId: string) {
+    const store = await loadStoreAsync();
     if (store[sessionId]) {
         delete store[sessionId];
-        saveStore(store);
+        await saveStoreAsync(store);
         console.log(`Cleared documents for session ${sessionId}`);
     }
 }
@@ -132,7 +179,7 @@ export async function readDocument({ document_name, section }: DocumentReaderPar
             return 'No session context set. Unable to access documents.';
         }
 
-        const store = loadStore();
+        const store = await loadStoreAsync();
         const sessionDocs = store[currentSessionId] || {};
 
         if (Object.keys(sessionDocs).length === 0) {
@@ -158,7 +205,7 @@ export async function readDocument({ document_name, section }: DocumentReaderPar
 
         // Use the first matching document
         const doc = matchingDocs[0];
-        let content = doc.content;
+        const content = doc.content;
 
         // If section specified, try to find it
         if (section) {
@@ -217,7 +264,7 @@ export async function listDocuments(): Promise<string> {
         return 'No session context set. Unable to list documents.';
     }
 
-    const store = loadStore();
+    const store = await loadStoreAsync();
     const sessionDocs = store[currentSessionId] || {};
     const docs = Object.values(sessionDocs);
 
