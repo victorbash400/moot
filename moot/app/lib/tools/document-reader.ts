@@ -22,6 +22,12 @@ export type DocumentReaderParams = z.infer<typeof documentReaderSchema>;
 // File path for local persistence
 const DB_PATH = path.join(process.cwd(), '.documents.json');
 
+// Debug: Log at module load time
+console.log('[document-reader] Module loaded. ENV CHECK:', {
+    KV_REST_API_URL: process.env.KV_REST_API_URL ? 'PRESENT' : 'MISSING',
+    NODE_ENV: process.env.NODE_ENV
+});
+
 // Check if Vercel KV (Upstash Redis) is available - check at runtime, not module load
 function isKVAvailable(): boolean {
     const available = !!process.env.KV_REST_API_URL;
@@ -64,52 +70,64 @@ export function getSessionContext(): string | null {
 // KV key for the document store
 const KV_STORE_KEY = 'moot:documents';
 
-// Load store from KV or file
+// Check if we're in production (Vercel)
+const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+
+// Load store from KV (production) or file (local dev)
 async function loadStoreAsync(): Promise<DocumentStore> {
-    try {
-        if (isKVAvailable()) {
+    console.log('[loadStore] isKVAvailable:', isKVAvailable(), 'isProduction:', isProduction);
+
+    if (isKVAvailable()) {
+        try {
             const { kv } = await import('@vercel/kv');
             const data = await kv.get<DocumentStore>(KV_STORE_KEY);
+            console.log('[loadStore] Loaded from KV, sessions:', Object.keys(data || {}).length);
             return data || {};
-        } else {
-            // File-based storage for local dev
+        } catch (e) {
+            console.error('[loadStore] KV load error:', e);
+            throw new Error('Failed to load from KV: ' + (e instanceof Error ? e.message : 'Unknown error'));
+        }
+    } else if (isProduction) {
+        // In production without KV - this is a configuration error
+        throw new Error('FATAL: Running in production but KV_REST_API_URL is not set. Configure Upstash KV.');
+    } else {
+        // Local dev - use file storage
+        try {
             if (fs.existsSync(DB_PATH)) {
                 const data = fs.readFileSync(DB_PATH, 'utf-8');
                 return JSON.parse(data);
             }
+        } catch (e) {
+            console.error('[loadStore] File load error:', e);
         }
-    } catch (e) {
-        console.error('Failed to load document store:', e);
+        return {};
     }
-    return {};
 }
 
-// Synchronous load for backward compatibility (file only) - kept for potential future use
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function loadStore(): DocumentStore {
-    try {
-        if (fs.existsSync(DB_PATH)) {
-            const data = fs.readFileSync(DB_PATH, 'utf-8');
-            return JSON.parse(data);
-        }
-    } catch (e) {
-        console.error('Failed to load document store:', e);
-    }
-    return {};
-}
-
-// Save store to KV or file
+// Save store to KV (production) or file (local dev)
 async function saveStoreAsync(store: DocumentStore): Promise<void> {
-    try {
-        if (isKVAvailable()) {
+    console.log('[saveStore] isKVAvailable:', isKVAvailable(), 'isProduction:', isProduction);
+
+    if (isKVAvailable()) {
+        try {
             const { kv } = await import('@vercel/kv');
             await kv.set(KV_STORE_KEY, store);
-        } else {
-            // File-based storage for local dev
-            fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+            console.log('[saveStore] Saved to KV');
+        } catch (e) {
+            console.error('[saveStore] KV save error:', e);
+            throw new Error('Failed to save to KV: ' + (e instanceof Error ? e.message : 'Unknown error'));
         }
-    } catch (e) {
-        console.error('Failed to save document store:', e);
+    } else if (isProduction) {
+        // In production without KV - this is a configuration error
+        throw new Error('FATAL: Running in production but KV_REST_API_URL is not set. Configure Upstash KV.');
+    } else {
+        // Local dev - use file storage
+        try {
+            fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2), 'utf-8');
+            console.log('[saveStore] Saved to file');
+        } catch (e) {
+            console.error('[saveStore] File save error:', e);
+        }
     }
 }
 
