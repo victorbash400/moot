@@ -22,8 +22,9 @@ export type DocumentReaderParams = z.infer<typeof documentReaderSchema>;
 // File path for local persistence
 const DB_PATH = path.join(process.cwd(), '.documents.json');
 
-// Check if Vercel KV is available
+// Check if Vercel KV (Upstash Redis) is available
 const useKV = !!process.env.KV_REST_API_URL;
+console.log(`Document storage: ${useKV ? 'Vercel KV (Upstash)' : 'Local file (.documents.json)'}`);
 
 interface DocumentItem {
     name: string;
