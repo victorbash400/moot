@@ -12,9 +12,9 @@ const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
  * Get the ElevenLabs API key from environment
  */
 function getApiKey(): string | null {
+    // Note: Vercel doesn't allow env vars starting with digits, so use ELEVENLABS_API_KEY
     return process.env.ELEVENLABS_API_KEY ||
         process.env.ELEVEN_API_KEY ||
-        process.env['11LABS_API_KEY_GAZELLE'] ||
         null;
 }
 
