@@ -11,7 +11,12 @@ import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), '.documents.json');
 const KV_STORE_KEY = 'moot:documents';
-const useKV = !!process.env.KV_REST_API_URL;
+
+function isKVAvailable(): boolean {
+    const available = !!process.env.KV_REST_API_URL;
+    console.log(`KV check: ${available ? 'Using Upstash KV' : 'Using file storage'}`);
+    return available;
+}
 
 interface DocumentItem {
     name: string;
@@ -27,7 +32,7 @@ interface DocumentStore {
 
 async function loadStoreAsync(): Promise<DocumentStore> {
     try {
-        if (useKV) {
+        if (isKVAvailable()) {
             const { kv } = await import('@vercel/kv');
             const data = await kv.get<DocumentStore>(KV_STORE_KEY);
             return data || {};
@@ -45,7 +50,7 @@ async function loadStoreAsync(): Promise<DocumentStore> {
 
 async function saveStoreAsync(store: DocumentStore): Promise<void> {
     try {
-        if (useKV) {
+        if (isKVAvailable()) {
             const { kv } = await import('@vercel/kv');
             await kv.set(KV_STORE_KEY, store);
         } else {

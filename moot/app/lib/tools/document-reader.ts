@@ -22,9 +22,12 @@ export type DocumentReaderParams = z.infer<typeof documentReaderSchema>;
 // File path for local persistence
 const DB_PATH = path.join(process.cwd(), '.documents.json');
 
-// Check if Vercel KV (Upstash Redis) is available
-const useKV = !!process.env.KV_REST_API_URL;
-console.log(`Document storage: ${useKV ? 'Vercel KV (Upstash)' : 'Local file (.documents.json)'}`);
+// Check if Vercel KV (Upstash Redis) is available - check at runtime, not module load
+function isKVAvailable(): boolean {
+    const available = !!process.env.KV_REST_API_URL;
+    console.log(`KV check: KV_REST_API_URL=${process.env.KV_REST_API_URL ? 'SET' : 'NOT SET'}, using KV: ${available}`);
+    return available;
+}
 
 interface DocumentItem {
     name: string;
@@ -64,7 +67,7 @@ const KV_STORE_KEY = 'moot:documents';
 // Load store from KV or file
 async function loadStoreAsync(): Promise<DocumentStore> {
     try {
-        if (useKV) {
+        if (isKVAvailable()) {
             const { kv } = await import('@vercel/kv');
             const data = await kv.get<DocumentStore>(KV_STORE_KEY);
             return data || {};
@@ -98,7 +101,7 @@ function loadStore(): DocumentStore {
 // Save store to KV or file
 async function saveStoreAsync(store: DocumentStore): Promise<void> {
     try {
-        if (useKV) {
+        if (isKVAvailable()) {
             const { kv } = await import('@vercel/kv');
             await kv.set(KV_STORE_KEY, store);
         } else {
