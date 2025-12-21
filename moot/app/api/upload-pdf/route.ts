@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         // Add to document store with session scope
         // Use 'global' as fallback if no session provided (for backwards compatibility)
         const effectiveSessionId = sessionId || 'global';
+        console.log(`Upload request: session_id from form=${sessionId}, using=${effectiveSessionId}`);
         await addDocument(effectiveSessionId, fileId, file.name, textContent, file.type);
 
         console.log(`Uploaded file: ${file.name} (${buffer.length} bytes)`);
