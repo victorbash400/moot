@@ -10,7 +10,7 @@ import { Runner, StreamingMode, isFinalResponse } from '@google/adk';
 import { Content, Part } from '@google/genai';
 import { legalAgent, sessionService, APP_NAME, PERSONA_INSTRUCTIONS } from '../../lib/agent/legal-agent';
 import { generateSpeech, stripMarkdown } from '../../lib/services/voice-service';
-import { ChatRequest } from '../../lib/types';
+import { ChatRequest, CaseContextRequest } from '../../lib/types';
 import { setSessionContext } from '../../lib/tools/document-reader';
 
 export async function POST(request: NextRequest) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Get case context from request OR from session state (for subsequent messages)
-                const effectiveContext = case_context || session.state?.case_context;
+                const effectiveContext = case_context || (session.state?.case_context as CaseContextRequest | undefined);
 
                 // Build user message with case context
                 let userMessage = message;
