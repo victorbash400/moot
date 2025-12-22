@@ -52,6 +52,13 @@ export async function POST(request: NextRequest) {
 
                 // Get case context from request OR from session state (for subsequent messages)
                 const effectiveContext = case_context || (session.state?.case_context as CaseContextRequest | undefined);
+                
+                console.log('🎭 Case context check:', {
+                    from_request: !!case_context,
+                    from_session: !!session.state?.case_context,
+                    effective: !!effectiveContext,
+                    persona: effectiveContext?.ai_persona
+                });
 
                 // Build user message with case context
                 let userMessage = message;

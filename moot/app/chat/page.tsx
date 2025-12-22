@@ -25,6 +25,7 @@ export default function Home() {
 
     // Case context - required before starting session
     const [caseContext, setCaseContext] = useState<CaseContext | null>(null);
+    const caseContextRef = useRef<CaseContext | null>(null); // Ref for immediate access in callbacks
     const [isContextExpanded, setIsContextExpanded] = useState(false);
 
     // Citations panel
@@ -65,6 +66,7 @@ export default function Home() {
     // Generate initial message based on case context
     const handleCaseSetupComplete = useCallback((context: CaseContext) => {
         setCaseContext(context);
+        caseContextRef.current = context; // Set ref immediately for callbacks
         // Store staging file IDs - files were already uploaded to staging
         console.log('📋 CaseSetup complete. Uploaded files:', context.uploadedFiles);
         pendingStagingIdsRef.current = context.uploadedFiles.map(f => f.id);
@@ -96,6 +98,7 @@ export default function Home() {
         setIsAiSpeaking(false);
         isStreamActiveRef.current = false;
         setCaseContext(null);
+        caseContextRef.current = null;
         setMessages([]);
         setSessionId(null);
         sessionIdRef.current = null;
@@ -152,14 +155,19 @@ export default function Home() {
             };
 
             // Always send case context so agent knows its role
-            if (caseContext) {
+            // Use ref for immediate access (state may not have updated yet in voice callbacks)
+            const currentCaseContext = caseContextRef.current;
+            if (currentCaseContext) {
                 requestBody.case_context = {
-                    case_type: caseContext.caseType,
-                    difficulty: caseContext.difficulty,
-                    ai_persona: caseContext.aiPersona,
-                    description: caseContext.description,
-                    uploaded_files: caseContext.uploadedFiles.map(f => f.name)
+                    case_type: currentCaseContext.caseType,
+                    difficulty: currentCaseContext.difficulty,
+                    ai_persona: currentCaseContext.aiPersona,
+                    description: currentCaseContext.description,
+                    uploaded_files: currentCaseContext.uploadedFiles.map(f => f.name)
                 };
+                console.log('📤 Sending case_context:', requestBody.case_context);
+            } else {
+                console.log('⚠️ No caseContext available to send');
             }
 
             const response = await fetch("/api/chat", {
