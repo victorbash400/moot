@@ -10,7 +10,7 @@ import {
     BookOpen,
     ChevronDown,
     ChevronUp,
-    Info
+    LogOut
 } from "lucide-react";
 import Link from "next/link";
 
@@ -229,9 +229,9 @@ export const Sidebar: FC<SidebarProps> = ({ isExpanded, onToggle, onVoiceSelect 
                     href="/"
                     className="group flex w-full items-center gap-4 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-white hover:text-slate-900 hover:shadow-sm"
                 >
-                    <Info className="h-5 w-5 shrink-0" />
+                    <LogOut className="h-5 w-5 shrink-0" />
                     <span className={`whitespace-nowrap transition-all duration-300 ${isExpanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>
-                        Info
+                        Exit
                     </span>
                 </Link>
                 <button className="group flex w-full items-center gap-4 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-white hover:text-slate-900 hover:shadow-sm">

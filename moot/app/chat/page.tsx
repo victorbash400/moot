@@ -13,14 +13,12 @@ import { CaseContextBar, CaseContext } from "../components/CaseContextBar";
 import { CaseSetup } from "../components/CaseSetup";
 import { CitationsPanel, Citation } from "../components/CitationsPanel";
 
-
-
 export default function Home() {
     const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
     const [sessionState, setSessionState] = useState<"idle" | "active" | "paused">("idle");
     const [sessionId, setSessionId] = useState<string | null>(null);
     const sessionIdRef = useRef<string | null>(null); // Ref for immediate access
-    const [inputMode, setInputMode] = useState<"text" | "voice">("text");
+    const [inputMode, setInputMode] = useState<"text" | "voice">("voice");
     const [selectedVoiceId, setSelectedVoiceId] = useState<string>("UgBBYS2sOqTuMpoF3BR0");
     const [isAiSpeaking, setIsAiSpeaking] = useState(false);
     const isStreamActiveRef = useRef(false);
@@ -68,7 +66,9 @@ export default function Home() {
     const handleCaseSetupComplete = useCallback((context: CaseContext) => {
         setCaseContext(context);
         // Store staging file IDs - files were already uploaded to staging
+        console.log('📋 CaseSetup complete. Uploaded files:', context.uploadedFiles);
         pendingStagingIdsRef.current = context.uploadedFiles.map(f => f.id);
+        console.log('📋 pendingStagingIdsRef set to:', pendingStagingIdsRef.current);
 
         // Add uploaded documents to the Sources panel immediately
         if (context.uploadedFiles.length > 0) {
@@ -92,6 +92,9 @@ export default function Home() {
 
     const handleNewSession = () => {
         // Reset everything for new session
+        stopAudio(); // Stop any playing audio
+        setIsAiSpeaking(false);
+        isStreamActiveRef.current = false;
         setCaseContext(null);
         setMessages([]);
         setSessionId(null);
