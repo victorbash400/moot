@@ -151,8 +151,8 @@ export default function Home() {
                 voice_id: selectedVoiceId || undefined
             };
 
-            // Send case context only on first message (when no sessionId exists)
-            if (!currentSessionId && caseContext) {
+            // Always send case context so agent knows its role
+            if (caseContext) {
                 requestBody.case_context = {
                     case_type: caseContext.caseType,
                     difficulty: caseContext.difficulty,

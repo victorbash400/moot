@@ -43,30 +43,40 @@ export async function POST(request: NextRequest) {
                         appName: APP_NAME,
                         userId: user_id,
                         sessionId: currentSessionId,
-                        state: {}  // initial state
+                        state: case_context ? { case_context } : {}  // Store case context in session state
                     });
                     console.log(`Created new session: ${currentSessionId}`);
                 } else {
                     console.log(`Using existing session: ${currentSessionId} (${session.events?.length || 0} events)`);
                 }
 
-                // Build user message with case context if first message
+                // Get case context from request OR from session state (for subsequent messages)
+                const effectiveContext = case_context || session.state?.case_context;
+
+                // Build user message with case context
                 let userMessage = message;
-                if (case_context && (!session.events || session.events.length === 0)) {
-                    const persona = case_context.ai_persona || 'assistant';
+                
+                // Always prepend persona context if we have it - ensures agent knows its role
+                if (effectiveContext) {
+                    const persona = effectiveContext.ai_persona || 'assistant';
                     const personaBehavior = PERSONA_INSTRUCTIONS[persona] || PERSONA_INSTRUCTIONS.assistant;
 
                     const contextPrefix = `[CASE CONTEXT]
-Case Type: ${case_context.case_type}
-Difficulty: ${case_context.difficulty}
-${case_context.uploaded_files ? `Available Documents: ${case_context.uploaded_files.join(', ')}` : ''}
+Case Type: ${effectiveContext.case_type}
+Difficulty: ${effectiveContext.difficulty}
+${effectiveContext.uploaded_files ? `Available Documents: ${effectiveContext.uploaded_files.join(', ')}` : ''}
 
 **YOUR ROLE: ${persona.toUpperCase().replace('_', ' ')}**
 ${personaBehavior}
 [END CONTEXT]
 
-`;
+User message: `;
                     userMessage = contextPrefix + message;
+                    
+                    // Save context to session state if not already there
+                    if (!session.state?.case_context) {
+                        session.state = { ...session.state, case_context: effectiveContext };
+                    }
                 }
 
                 // Create Runner with session service - ADK handles history automatically
